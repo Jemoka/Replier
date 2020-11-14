@@ -5,7 +5,7 @@ import csv
 import math
 import numpy as np
 
-from collections import Counter
+from collections import defaultdict
 
 import torch
 import torch.nn as nn
@@ -101,12 +101,25 @@ dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 
 tokenizer = get_tokenizer("basic_english")
 
-dataset_x_tokenized = [tokenizer(i) for i in dataset_x_raw][1:]
-dataset_y_tokenized = [tokenizer(i) for i in dataset_y_raw][1:]
+vocabulary = defaultdict(lambda: len(vocabulary))
 
-dataset_pairwise = list(zip(dataset_x_tokenized, dataset_y_tokenized))
+dataset_x_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer(i)] for i in dataset_x_raw][1:]
+dataset_y_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer(i)] for i in dataset_y_raw][1:]
 
-print(dataset_pairwise)
+vocabulary_inversed = {v: k for k, v in vocabulary.items()}
 
-# print(dataset_x_tokenized)
+normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
+
+normalized_flattened = [e for i in normalized_data for e in i] # flatten
+
+batch_size = 32
+
+chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
+
+batches = [i for i in chunk(normalized_flattened, batch_size) if i != []] # batchify and remove empty list
+
+input_batches = [[e[0] for e in i] for i in batches]
+output_batches = [[e[1] for e in i] for i in batches]
+
+
 
