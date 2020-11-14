@@ -2,14 +2,16 @@
 
 import re
 import csv
-from torchtext.data.utils import get_tokenizer
 import math
 import numpy as np
+
+from collections import Counter
 
 import torch
 import torch.nn as nn
 import torch.optim as optimizer
 import torch.nn.functional as F
+from torchtext.data.utils import get_tokenizer
 
 #### Utilities ####
 np2tens = lambda x:torch.from_numpy(x).float()
@@ -26,18 +28,25 @@ def deEmojify(text):
 #### Network ####
 # https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 class Transformer(nn.Module):
-    def __init__(self, numberTokens, embeddingSize, attentionHead, hiddenSize, numberLayers):
+    # def __init__(self, numberTokens:int, embeddingSize:int, attentionHead:int, hiddenDenseSize:int, numberLayers:int):
+    def __init__(self, numberTokens, embeddingSize, numberTransformerLayers, attentionHeadCount, transformerHiddenDenseSize):
         # Based on https://pytorch.org/tutorials/beginner/transformer_tutorial.html
         super(Transformer, self).__init__()
-        self.default = nn.Linear(128, 64)
         self.model_type = 'Transformer'
+        self.embeddingSize = embeddingSize
 
-        self.mask = None
+        self.embedding = nn.Embedding(numberTokens, embeddingSize)
 
-        self.
+        self.positional_encoding = self.positionalencoding1d(embeddingSize)
+        
+        encoderLayer = nn.TransformerEncoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
+
+        self.encoder = nn.TransformerEncoder(encoderLayer, numberTransformerLayers)
+
+        self.decoder = nn.Linear(embeddingSize, numberTokens)
 
     @staticmethod
-    def positionalencoding1d(d_model, length):
+    def positionalencoding1d(d_model, length_max=5000):
         """
         PositionalEncoding2D: https://github.com/wzlxjtu/PositionalEncoding2D/blob/master/positionalembedding2d.py
         AttentionIsAllYouNeed: https://arxiv.org/pdf/1706.03762.pdf
@@ -49,8 +58,8 @@ class Transformer(nn.Module):
         if d_model % 2 != 0:
             raise ValueError("Cannot use sin/cos positional encoding with "
                              "odd dim (got dim={:d})".format(d_model))
-        pe = torch.zeros(length, d_model)
-        position = torch.arange(0, length).unsqueeze(1)
+        pe = torch.zeros(length_max, d_model)
+        position = torch.arange(0, length_max).unsqueeze(1)
         div_term = torch.exp((torch.arange(0, d_model, 2, dtype=torch.float) *
                              -(math.log(10000.0) / d_model)))
         pe[:, 0::2] = torch.sin(position.float() * div_term)
@@ -59,7 +68,7 @@ class Transformer(nn.Module):
         return pe
 
     @staticmethod
-    def __generate_square_subsequent_mask(self, sz):
+    def generate_square_subsequent_mask(self, sz):
         """
         Hide all subsequent items because we can't see the future: https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 
@@ -71,14 +80,16 @@ class Transformer(nn.Module):
         mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
         return mask
 
-    def forward(self, x):
-        # print(positionalencoding1d)
-        # print(positionalencoding1d(dimentions, length))
-        # return self.default(x)
-        pass
+    def forward(self, x, mask):
+        embedded = self.embedding(x)*math.sqrt(self.embeddingSize) #why?
+        net = self.positionalencoding1d(embedded)
+        net = self.encoder(net, mask)
+        net = self.decoder(net)
 
-replier = Transformer()
-optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
+        return net
+
+# replier = Transformer()
+# optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
 
 #### Data Prep ####
 with open("./trump_toys.csv", "r") as dataFile:
@@ -90,10 +101,12 @@ dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 
 tokenizer = get_tokenizer("basic_english")
 
-dataset_x_tokenized = [tokenizer(i) for i in dataset_x_raw]
-dataset_y_tokenized = [tokenizer(i) for i in dataset_y_raw]
+dataset_x_tokenized = [tokenizer(i) for i in dataset_x_raw][1:]
+dataset_y_tokenized = [tokenizer(i) for i in dataset_y_raw][1:]
 
-print(dataset_x_tokenized)
+dataset_pairwise = list(zip(dataset_x_tokenized, dataset_y_tokenized))
+
+print(dataset_pairwise)
 
 # print(dataset_x_tokenized)
 
