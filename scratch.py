@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from torchtext.data.utils import get_tokenizer
 
 #### Utilities ####
-np2tens = lambda x:torch.from_numpy(x).float()
+np2tens = lambda x:torch.from_numpy(x).long()
 
 def deEmojify(text):
     regrex_pattern = re.compile(pattern = "["
@@ -29,15 +29,15 @@ def deEmojify(text):
 # https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 class Transformer(nn.Module):
     # def __init__(self, numberTokens:int, embeddingSize:int, attentionHead:int, hiddenDenseSize:int, numberLayers:int):
-    def __init__(self, numberTokens, embeddingSize, numberTransformerLayers, attentionHeadCount, transformerHiddenDenseSize):
+    def __init__(self, numberTokens, embeddingSize, numberTransformerLayers, attentionHeadCount, transformerHiddenDenseSize, batch_size=32):
         # Based on https://pytorch.org/tutorials/beginner/transformer_tutorial.html
         super(Transformer, self).__init__()
+        self.batch_size=batch_size
         self.model_type = 'Transformer'
         self.embeddingSize = embeddingSize
+        self.numberTokens = numberTokens
 
         self.embedding = nn.Embedding(numberTokens, embeddingSize)
-
-        self.positional_encoding = self.positionalencoding1d(embeddingSize)
         
         encoderLayer = nn.TransformerEncoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
 
@@ -46,7 +46,7 @@ class Transformer(nn.Module):
         self.decoder = nn.Linear(embeddingSize, numberTokens)
 
     @staticmethod
-    def positionalencoding1d(d_model, length_max=5000):
+    def positionalencoding1d(d_model, length_max):
         """
         PositionalEncoding2D: https://github.com/wzlxjtu/PositionalEncoding2D/blob/master/positionalembedding2d.py
         AttentionIsAllYouNeed: https://arxiv.org/pdf/1706.03762.pdf
@@ -68,11 +68,11 @@ class Transformer(nn.Module):
         return pe
 
     @staticmethod
-    def generate_square_subsequent_mask(self, sz):
+    def generate_square_subsequent_mask(sz):
         """
         Hide all subsequent items because we can't see the future: https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 
-        :param sz: tensor to be masked
+        :param sz: tensor size to be masked
         :return mask: yo mask
         """
 
@@ -82,7 +82,8 @@ class Transformer(nn.Module):
 
     def forward(self, x, mask):
         embedded = self.embedding(x)*math.sqrt(self.embeddingSize) #why?
-        net = self.positionalencoding1d(embedded)
+        positional_encoding = self.positionalencoding1d(self.embeddingSize, self.numberTokens)
+        net = positional_encoding+embedded
         net = self.encoder(net, mask)
         net = self.decoder(net)
 
@@ -118,8 +119,45 @@ chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq))
 
 batches = [i for i in chunk(normalized_flattened, batch_size) if i != []] # batchify and remove empty list
 
-input_batches = [[e[0] for e in i] for i in batches]
-output_batches = [[e[1] for e in i] for i in batches]
+# input_batches = [[e[0] for e in i] for i in batches] # list of inputs
+# output_batches = [[e[1] for e in i] for i in batches] # list of outputs
+
+inputs_batched = [] # list of onehot inputs
+outputs_batched = [] # list of onehot outputs
+
+
+for i in batches:
+    input_batch = [] # list of onehot inputs
+    output_batch = [] # list of onehot outputs
+    for e in i:
+        input_onehot = np.zeros(len(vocabulary))
+        input_onehot[e[0]] = 1
+        input_batch.append(input_onehot)
+        output_onehot = np.zeros(len(vocabulary))
+        output_onehot[e[1]] = 1
+        output_batch.append(output_onehot)
+    inputs_batched.append(np.array(input_batch))
+    outputs_batched.append(np.array(output_batch))
+
+#### Hyperparametres ####
+model = Transformer(len(vocabulary), embeddingSize=200, numberTransformerLayers=2, attentionHeadCount=2, transformerHiddenDenseSize=200, batch_size=batch_size)
+
+loss = nn.CrossEntropyLoss()
+lr = 5 # apparently Torch people think this is a good idea
+adam = optimizer.Adam(model.parameters(), lr)
+
+#### Training ####
+epochs = 5
+
+model.train() # duh
+mask = model.generate_square_subsequent_mask(batch_size)
+for epoch in range(epochs):
+    for inp, oup in zip(inputs_batched, outputs_batched):
+        adam.zero_grad()
+        prediction = model(np2tens(inp), mask)
+        breakpoint()
+
+
 
 
 
