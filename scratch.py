@@ -44,6 +44,7 @@ class Transformer(nn.Module):
         self.encoder = nn.TransformerEncoder(encoderLayer, numberTransformerLayers)
 
         self.decoder = nn.Linear(embeddingSize, numberTokens)
+        self.decoderActivation = nn.Softmax(-1)
 
     @staticmethod
     def positionalencoding1d(d_model, length_max):
@@ -86,6 +87,7 @@ class Transformer(nn.Module):
         net = positional_encoding+embedded
         net = self.encoder(net, mask)
         net = self.decoder(net)
+        net = self.decoderActivation(net)
 
         return net
 
