@@ -183,7 +183,7 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
 model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=200, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=2, transformerHiddenDenseSize=200, batch_size=batch_size)
 
 criterion = nn.CrossEntropyLoss(reduction='sum')
-lr = 5 # apparently Torch people think this is a good idea
+lr = 1e-2 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
 
