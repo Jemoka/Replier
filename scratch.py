@@ -245,7 +245,7 @@ for epoch in range(epochs):
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         adam.step()
 
-        batch_data_feed.set_description(f'| REPORTING BATCH | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
+        batch_data_feed.set_description(f'| Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
 
     print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
     scheduler.step()
