@@ -2,9 +2,12 @@
 
 import re
 import csv
+import time
+import uuid
 import math
 import random
 import numpy as np
+from datetime import datetime
 
 from tqdm import tqdm
 
@@ -19,8 +22,10 @@ from torchtext.data.utils import get_tokenizer
 import matplotlib.pyplot as plt
 
 #### Utilities ####
+# util to tenserify them numpy arrays
 np2tens = lambda x:torch.from_numpy(x).long()
 
+# util to get rid of emojis
 def deEmojify(text):
     regrex_pattern = re.compile(pattern = "["
         u"\U0001F600-\U0001F64F"  # emoticons
@@ -29,6 +34,24 @@ def deEmojify(text):
         u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
                            "]+", flags = re.UNICODE)
     return regrex_pattern.sub(r'',text)
+
+## util to check gradient flow from https://discuss.pytorch.org/t/check-gradient-flow-in-network/15063/7
+def plot_grad_flow(named_parameters):
+    ave_grads = []
+    layers = []
+    for n, p in named_parameters:
+        if(p.requires_grad) and ("bias" not in n):
+            layers.append(n)
+            ave_grads.append(p.grad.abs().mean())
+    plt.plot(ave_grads, alpha=0.3, color="b")
+    plt.hlines(0, 0, len(ave_grads)+1, linewidth=1, color="k" )
+    plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
+    plt.xlim(xmin=0, xmax=len(ave_grads))
+    plt.xlabel("Layers")
+    plt.ylabel("average gradient")
+    plt.title("Gradient flow")
+    plt.grid(True)
+    plt.show()
 
 #### Network ####
 # https://pytorch.org/tutorials/beginner/transformer_tutorial.html
@@ -131,7 +154,9 @@ class Transformer(nn.Module):
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
 
 #### Data Prep ####
-with open("./trump_replies.csv", "r") as dataFile:
+dataset_name = "./trump_toys.csv"
+
+with open(dataset_name, "r") as dataFile:
     csvReader = csv.reader(dataFile)
     dataset_raw = [i[4:] for i in csvReader]
 
@@ -207,28 +232,14 @@ scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay sched
 epochs = 100
 reporting = 2
 
-
-## util to check gradient flow from https://discuss.pytorch.org/t/check-gradient-flow-in-network/15063/7
-def plot_grad_flow(named_parameters):
-    ave_grads = []
-    layers = []
-    for n, p in named_parameters:
-        if(p.requires_grad) and ("bias" not in n):
-            layers.append(n)
-            ave_grads.append(p.grad.abs().mean())
-    plt.plot(ave_grads, alpha=0.3, color="b")
-    plt.hlines(0, 0, len(ave_grads)+1, linewidth=1, color="k" )
-    plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
-    plt.xlim(xmin=0, xmax=len(ave_grads))
-    plt.xlabel("Layers")
-    plt.ylabel("average gradient")
-    plt.title("Gradient flow")
-    plt.grid(True)
-    plt.show()
+version = "NOV232020_0"
+modelID = str(uuid.uuid4())[-5:]
+initialRuntime = time.time()
 
 model.train() # duh
 mask = model.generate_square_subsequent_mask(batch_size)
 for epoch in range(epochs):
+    checkpointID = str(uuid.uuid4())[-5:]
     batch_data_feed = tqdm(enumerate(zip(inputs_batched, outputs_batched)), total=len(inputs_batched))
     for batch, (inp, oup) in batch_data_feed:
         inp_torch = np2tens(inp)
@@ -245,7 +256,28 @@ for epoch in range(epochs):
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         adam.step()
 
-        batch_data_feed.set_description(f'| Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
+        batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
+
+    # CheckpointID,ModelID,ModelVersion,Dataset,Initial Runtime,Current Time,Epoch,Loss,Checkpoint Filename
+
+    initialHumanTime = datetime.fromtimestamp(initialRuntime).strftime("%m/%d/%Y, %H:%M:%S")
+    nowHumanTime = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
+
+    with open("./training/trump/training-log.csv", "a") as df:
+        writer = csv.writer(df)
+        writer.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model'])
+
+    torch.save({
+        'version': version,
+        'modelID': modelID,
+        'checkpointID': checkpointID,
+        'datasetName': dataset_name,
+        'epoch': epoch,
+        'loss': loss_val,
+        'model_state': model.state_dict(),
+        'optimizer_state': adam.state_dict(),
+        'lr': scheduler.get_last_lr()
+    }, f'./training/trump/{modelID}-{checkpointID}.model')
 
     print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
     scheduler.step()
