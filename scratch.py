@@ -29,7 +29,7 @@ def deEmojify(text):
 # https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 class Transformer(nn.Module):
     # def __init__(self, numberTokens:int, embeddingSize:int, attentionHead:int, hiddenDenseSize:int, numberLayers:int):
-    def __init__(self, numberTokens, embeddingSize, numberTransformerLayers, attentionHeadCount, transformerHiddenDenseSize, batch_size=32):
+    def __init__(self, numberTokens, embeddingSize, maxLength, numberEncoderLayers, numberDecoderLayers, attentionHeadCount, transformerHiddenDenseSize, batch_size=32):
         # Based on https://pytorch.org/tutorials/beginner/transformer_tutorial.html
         super(Transformer, self).__init__()
         self.batch_size=batch_size
@@ -37,14 +37,22 @@ class Transformer(nn.Module):
         self.embeddingSize = embeddingSize
         self.numberTokens = numberTokens
 
-        self.embedding = nn.Embedding(numberTokens, embeddingSize)
+        self.encoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
+        self.decoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
+        self.maxLength = maxLength 
         
         encoderLayer = nn.TransformerEncoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
 
-        self.encoder = nn.TransformerEncoder(encoderLayer, numberTransformerLayers)
+        self.encoder = nn.TransformerEncoder(encoderLayer, numberEncoderLayers)
 
-        self.decoder = nn.Linear(embeddingSize, numberTokens)
-        self.decoderActivation = nn.Softmax(-1)
+        
+        decoderLayer = nn.TransformerDecoderLayer(embeddingSize, attentionHeadCount)
+
+
+        self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
+
+        self.decoderLinear = nn.Linear(embeddingSize, numberTokens)
+        self.decoderSoftmax = nn.Softmax()
 
     @staticmethod
     def positionalencoding1d(d_model, length_max):
@@ -81,15 +89,31 @@ class Transformer(nn.Module):
         mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
         return mask
 
-    def forward(self, x, mask):
-        embedded = self.embedding(x)*math.sqrt(self.embeddingSize) #why?
-        positional_encoding = self.positionalencoding1d(self.embeddingSize, self.numberTokens)
-        net = positional_encoding+embedded
-        net = self.encoder(net, mask)
-        net = self.decoder(net)
-        net = self.decoderActivation(net)
+    def forward(self, x, mask, decoder_seed):
+        embedded = self.encoderEmbedding(x)*math.sqrt(self.embeddingSize) #why?
 
-        return net
+        positional_encoding = self.positionalencoding1d(self.embeddingSize, self.maxLength)
+        encoding_memory = self.encoder(positional_encoding+embedded, mask)
+
+        seed_embedded = self.decoderEmbedding(decoder_seed)*math.sqrt(self.embeddingSize) #why?
+        seed_positionalencoding = self.positionalencoding1d(self.embeddingSize, 1)
+
+        seed = seed_embedded+seed_positionalencoding
+
+        result = torch.Tensor()
+
+        for _ in range(self.maxLength):
+            net = self.decoder(seed, encoding_memory, tgt_mask=mask)
+            net_decoded = self.decoderSoftmax(self.decoderLinear(net))
+
+            result = torch.cat((result, net_decoded), 1)
+
+            net_embeded = self.decoderEmbedding(torch.argmax(net_decoded, dim=2))*math.sqrt(self.embeddingSize) #why?
+            net_positionalencoding = self.positionalencoding1d(self.embeddingSize, 1)
+
+            seed = net_embeded+net_positionalencoding
+
+        return result
 
 # replier = Transformer()
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
@@ -106,60 +130,83 @@ tokenizer = get_tokenizer("basic_english")
 
 vocabulary = defaultdict(lambda: len(vocabulary))
 
-dataset_x_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer(i)] for i in dataset_x_raw][1:]
-dataset_y_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer(i)] for i in dataset_y_raw][1:]
+pad = vocabulary["<pad>"]
+sos_token = vocabulary["<sos>"]
+eos_token = vocabulary["<eos>"]
+
+dataset_x_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer("<sos> "+i+" <eos>")] for i in dataset_x_raw][1:]
+dataset_y_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer("<sos> "+i+" <eos>")] for i in dataset_y_raw][1:]
 
 vocabulary_inversed = {v: k for k, v in vocabulary.items()}
 
-normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
+max_length = max(max([len(i) for i in dataset_x_tokenized]), max([len(i) for i in dataset_y_tokenized]))
 
-normalized_flattened = [e for i in normalized_data for e in i] # flatten
+if max_length % 2 != 0:
+    max_length += 1
 
-batch_size = 32
+dataset_x_padded = [x+(max_length-len(x))*[0] for x in dataset_x_tokenized]
+dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
+
+# normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
+
+batch_size = 8
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
-batches = [i for i in chunk(normalized_flattened, batch_size) if i != []] # batchify and remove empty list
-
-# input_batches = [[e[0] for e in i] for i in batches] # list of inputs
-# output_batches = [[e[1] for e in i] for i in batches] # list of outputs
-
-inputs_batched = [] # list of onehot inputs
-outputs_batched = [] # list of onehot outputs
+inputs_batched = np.array([i for i in chunk(dataset_x_padded, batch_size) if len(i) == batch_size]) # batchify and remove empty list
+outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if len(i) == batch_size]) # batchify and remove empty list
 
 
-for i in batches:
-    input_batch = [] # list of onehot inputs
-    output_batch = [] # list of onehot outputs
-    for e in i:
-        input_onehot = np.zeros(len(vocabulary))
-        input_onehot[e[0]] = 1
-        input_batch.append(input_onehot)
-        output_onehot = np.zeros(len(vocabulary))
-        output_onehot[e[1]] = 1
-        output_batch.append(output_onehot)
-    inputs_batched.append(np.array(input_batch))
-    outputs_batched.append(np.array(output_batch))
+# inputs_batched = [np.array([np.array([e[0] for e in sentence]) for sentence in batch]) for batch in batches] # list of inputs
+# outputs_batched = [np.array([np.array([e[1] for e in sentence]) for sentence in batch]) for batch in batches] # list of outputs
+
+
+# inputs_batched = [] # list of onehot inputs
+# outputs_batched = [] # list of onehot outputs
+
+
+# for i in batches:
+    # input_batch = [] # list of onehot inputs
+    # output_batch = [] # list of onehot outputs
+    # for e in i:
+        # input_onehot = np.zeros(len(vocabulary))
+        # input_onehot[e[0]] = 1
+        # input_batch.append(input_onehot)
+        # output_onehot = np.zeros(len(vocabulary))
+        # output_onehot[e[1]] = 1
+        # output_batch.append(output_onehot)
+    # inputs_batched.append(np.array(input_batch))
+    # outputs_batched.append(np.array(output_batch))
 
 #### Hyperparametres ####
-model = Transformer(len(vocabulary), embeddingSize=200, numberTransformerLayers=2, attentionHeadCount=2, transformerHiddenDenseSize=200, batch_size=batch_size)
+model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=200, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=2, transformerHiddenDenseSize=200, batch_size=batch_size)
 
-loss = nn.CrossEntropyLoss()
+loss = nn.CrossEntropyLoss(reduction='sum')
 lr = 5 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 
 #### Training ####
 epochs = 5
+reporting = 4
 
 model.train() # duh
 mask = model.generate_square_subsequent_mask(batch_size)
 for epoch in range(epochs):
-    for inp, oup in zip(inputs_batched, outputs_batched):
-        adam.zero_grad()
-        prediction = model(np2tens(inp), mask)
+    for batch, (inp, oup) in enumerate(zip(inputs_batched, outputs_batched)):
         breakpoint()
+        inp_torch = np2tens(inp)
+        oup_torch = np2tens(oup)
 
+        adam.zero_grad()
 
+        decoder_seed = torch.Tensor([[0]]*batch_size).type(torch.LongTensor)
+        prediction = model(inp_torch, mask, decoder_seed)
 
+        loss_val = loss(prediction.permute(0,2,1), oup_torch)
 
+        loss_val.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+        adam.step()
+
+    print(f'| Epoch: {epoch} | Loss: {loss_val} |')
 
