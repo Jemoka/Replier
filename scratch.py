@@ -54,6 +54,10 @@ class Transformer(nn.Module):
         self.decoderLinear = nn.Linear(embeddingSize, numberTokens)
         self.decoderSoftmax = nn.Softmax(dim=2)
 
+        initrange = 0.01
+        self.encoderEmbedding.weight.data.uniform_(-initrange, initrange)
+
+
     @staticmethod
     def positionalencoding1d(d_model, length_max):
         """
@@ -88,6 +92,8 @@ class Transformer(nn.Module):
         mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
         mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
         return mask
+
+
 
     def forward(self, x, mask, decoder_seed):
         embedded = self.encoderEmbedding(x)*math.sqrt(self.embeddingSize) #why?
@@ -182,7 +188,7 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
 #### Hyperparametres ####
 model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=200, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=2, transformerHiddenDenseSize=200, batch_size=batch_size)
 
-criterion = nn.CrossEntropyLoss(reduction='sum')
+criterion = nn.CrossEntropyLoss()
 lr = 1e-2 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
