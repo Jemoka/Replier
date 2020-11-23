@@ -154,7 +154,7 @@ class Transformer(nn.Module):
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
 
 #### Data Prep ####
-dataset_name = "./trump_toys.csv"
+dataset_name = "./trump_replies.csv"
 
 with open(dataset_name, "r") as dataFile:
     csvReader = csv.reader(dataFile)
