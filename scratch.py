@@ -52,7 +52,7 @@ class Transformer(nn.Module):
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
 
         self.decoderLinear = nn.Linear(embeddingSize, numberTokens)
-        self.decoderSoftmax = nn.Softmax()
+        self.decoderSoftmax = nn.Softmax(dim=2)
 
     @staticmethod
     def positionalencoding1d(d_model, length_max):
@@ -107,6 +107,7 @@ class Transformer(nn.Module):
             net_decoded = self.decoderSoftmax(self.decoderLinear(net))
 
             result = torch.cat((result, net_decoded), 1)
+            result.retain_grad()
 
             net_embeded = self.decoderEmbedding(torch.argmax(net_decoded, dim=2))*math.sqrt(self.embeddingSize) #why?
             net_positionalencoding = self.positionalencoding1d(self.embeddingSize, 1)
@@ -181,19 +182,19 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
 #### Hyperparametres ####
 model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=200, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=2, transformerHiddenDenseSize=200, batch_size=batch_size)
 
-loss = nn.CrossEntropyLoss(reduction='sum')
+criterion = nn.CrossEntropyLoss(reduction='sum')
 lr = 5 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
+scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
 
 #### Training ####
 epochs = 5
-reporting = 4
+reporting = 2
 
 model.train() # duh
 mask = model.generate_square_subsequent_mask(batch_size)
 for epoch in range(epochs):
     for batch, (inp, oup) in enumerate(zip(inputs_batched, outputs_batched)):
-        breakpoint()
         inp_torch = np2tens(inp)
         oup_torch = np2tens(oup)
 
@@ -202,11 +203,14 @@ for epoch in range(epochs):
         decoder_seed = torch.Tensor([[0]]*batch_size).type(torch.LongTensor)
         prediction = model(inp_torch, mask, decoder_seed)
 
-        loss_val = loss(prediction.permute(0,2,1), oup_torch)
+        loss_val = criterion(prediction.permute(0,2,1), oup_torch)
 
         loss_val.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         adam.step()
 
-    print(f'| Epoch: {epoch} | Loss: {loss_val} |')
+        if batch % reporting == 0 and batch != 0:
+            print(f'| REPORTING BATCH | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
+
+    print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
+    scheduler.step()
 
