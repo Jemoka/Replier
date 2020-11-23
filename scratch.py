@@ -6,6 +6,8 @@ import math
 import random
 import numpy as np
 
+from tqdm import tqdm
+
 from collections import defaultdict
 
 import torch
@@ -202,7 +204,7 @@ adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
 
 #### Training ####
-epochs = 5
+epochs = 100
 reporting = 2
 
 
@@ -227,7 +229,8 @@ def plot_grad_flow(named_parameters):
 model.train() # duh
 mask = model.generate_square_subsequent_mask(batch_size)
 for epoch in range(epochs):
-    for batch, (inp, oup) in enumerate(zip(inputs_batched, outputs_batched)):
+    batch_data_feed = tqdm(enumerate(zip(inputs_batched, outputs_batched)), total=len(inputs_batched))
+    for batch, (inp, oup) in batch_data_feed:
         inp_torch = np2tens(inp)
         oup_torch = np2tens(oup)
 
@@ -242,8 +245,7 @@ for epoch in range(epochs):
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         adam.step()
 
-        if batch % reporting == 0 and batch != 0:
-            print(f'| REPORTING BATCH | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
+        batch_data_feed.set_description(f'| REPORTING BATCH | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
 
     print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
     scheduler.step()
