@@ -3,6 +3,7 @@
 import re
 import csv
 import math
+import random
 import numpy as np
 
 from collections import defaultdict
@@ -12,6 +13,8 @@ import torch.nn as nn
 import torch.optim as optimizer
 import torch.nn.functional as F
 from torchtext.data.utils import get_tokenizer
+
+import matplotlib.pyplot as plt
 
 #### Utilities ####
 np2tens = lambda x:torch.from_numpy(x).long()
@@ -46,7 +49,7 @@ class Transformer(nn.Module):
         self.encoder = nn.TransformerEncoder(encoderLayer, numberEncoderLayers)
 
         
-        decoderLayer = nn.TransformerDecoderLayer(embeddingSize, attentionHeadCount)
+        decoderLayer = nn.TransformerDecoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
 
 
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
@@ -126,12 +129,17 @@ class Transformer(nn.Module):
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
 
 #### Data Prep ####
-with open("./trump_toys.csv", "r") as dataFile:
+with open("./trump_replies.csv", "r") as dataFile:
     csvReader = csv.reader(dataFile)
     dataset_raw = [i[4:] for i in csvReader]
 
 dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
 dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
+
+zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
+random.shuffle(zipped_dataset)
+
+dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
 tokenizer = get_tokenizer("basic_english")
 
@@ -186,16 +194,35 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
     # outputs_batched.append(np.array(output_batch))
 
 #### Hyperparametres ####
-model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=200, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=2, transformerHiddenDenseSize=200, batch_size=batch_size)
+model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=150, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=2, transformerHiddenDenseSize=64, batch_size=batch_size)
 
 criterion = nn.CrossEntropyLoss()
-lr = 1e-2 # apparently Torch people think this is a good idea
+lr = 5 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
 
 #### Training ####
 epochs = 5
 reporting = 2
+
+
+## util to check gradient flow from https://discuss.pytorch.org/t/check-gradient-flow-in-network/15063/7
+def plot_grad_flow(named_parameters):
+    ave_grads = []
+    layers = []
+    for n, p in named_parameters:
+        if(p.requires_grad) and ("bias" not in n):
+            layers.append(n)
+            ave_grads.append(p.grad.abs().mean())
+    plt.plot(ave_grads, alpha=0.3, color="b")
+    plt.hlines(0, 0, len(ave_grads)+1, linewidth=1, color="k" )
+    plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
+    plt.xlim(xmin=0, xmax=len(ave_grads))
+    plt.xlabel("Layers")
+    plt.ylabel("average gradient")
+    plt.title("Gradient flow")
+    plt.grid(True)
+    plt.show()
 
 model.train() # duh
 mask = model.generate_square_subsequent_mask(batch_size)
@@ -210,8 +237,9 @@ for epoch in range(epochs):
         prediction = model(inp_torch, mask, decoder_seed)
 
         loss_val = criterion(prediction.permute(0,2,1), oup_torch)
-
         loss_val.backward()
+        # plot_grad_flow(model.named_parameters()) # checks gradient flow
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         adam.step()
 
         if batch % reporting == 0 and batch != 0:
