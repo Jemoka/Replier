@@ -207,7 +207,7 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
     # outputs_batched.append(np.array(output_batch))
 
 #### Hyperparametres ####
-model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=150, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=2, transformerHiddenDenseSize=64, batch_size=batch_size)
+model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=150, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=2, transformerHiddenDenseSize=128, batch_size=batch_size)
 
 criterion = nn.CrossEntropyLoss()
 lr = 3e-3 # apparently Torch people think this is a good idea
@@ -241,8 +241,8 @@ for epoch in range(epochs):
             loss_val = criterion(prediction.squeeze(), oup_token.squeeze())
             loss_val.backward()
 
-            plot_grad_flow(model.named_parameters())
-            breakpoint()
+            # plot_grad_flow(model.named_parameters())
+            # breakpoint()
 
             # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             adam.step()
