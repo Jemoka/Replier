@@ -191,7 +191,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 8
+batch_size = 32 
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -221,7 +221,7 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
     # outputs_batched.append(np.array(output_batch))
 
 #### Hyperparametres ####
-model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=150, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=2, transformerHiddenDenseSize=64, batch_size=batch_size)
+model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=500, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=2, transformerHiddenDenseSize=64, batch_size=batch_size)
 
 criterion = nn.CrossEntropyLoss()
 lr = 5 # apparently Torch people think this is a good idea
@@ -232,7 +232,7 @@ scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay sched
 epochs = 100
 reporting = 2
 
-version = "NOV232020_0"
+version = "NOV232020_1"
 modelID = str(uuid.uuid4())[-5:]
 initialRuntime = time.time()
 
@@ -252,7 +252,8 @@ for epoch in range(epochs):
 
         loss_val = criterion(prediction.permute(0,2,1), oup_torch)
         loss_val.backward()
-        # plot_grad_flow(model.named_parameters()) # checks gradient flow
+        plot_grad_flow(model.named_parameters()) # checks gradient flow
+        breakpoint()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         adam.step()
 
