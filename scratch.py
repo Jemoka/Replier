@@ -207,7 +207,7 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
     # outputs_batched.append(np.array(output_batch))
 
 #### Hyperparametres ####
-model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=350, numberEncoderLayers=8, numberDecoderLayers=8, attentionHeadCount=4, transformerHiddenDenseSize=256, batch_size=batch_size)
+model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=200, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=4, transformerHiddenDenseSize=256, batch_size=batch_size)
 
 criterion = nn.CrossEntropyLoss()
 lr = 1 # apparently Torch people think this is a good idea
