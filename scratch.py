@@ -123,32 +123,18 @@ class Transformer(nn.Module):
 
 
 
-    def forward(self, x, mask, decoder_seed):
+    def forward(self, x, decoder_seed, mask):
         embedded = self.encoderEmbedding(x)*math.sqrt(self.embeddingSize) #why?
 
         positional_encoding = self.positionalencoding1d(self.embeddingSize, self.maxLength)
         encoding_memory = self.encoder(positional_encoding+embedded, mask)
 
-        seed_embedded = self.decoderEmbedding(decoder_seed)*math.sqrt(self.embeddingSize) #why?
-        seed_positionalencoding = self.positionalencoding1d(self.embeddingSize, 1)
+        seed = self.decoderEmbedding(decoder_seed)
 
-        seed = seed_embedded+seed_positionalencoding
-
-        result = torch.Tensor()
-
-        for _ in range(self.maxLength):
-            net = self.decoder(seed, encoding_memory, tgt_mask=mask)
-            net_decoded = self.decoderSoftmax(self.decoderLinear(net))
-
-            result = torch.cat((result, net_decoded), 1)
-            result.retain_grad()
-
-            net_embeded = self.decoderEmbedding(torch.argmax(net_decoded, dim=2))*math.sqrt(self.embeddingSize) #why?
-            net_positionalencoding = self.positionalencoding1d(self.embeddingSize, 1)
-
-            seed = net_embeded+net_positionalencoding
-
-        return result
+        net = self.decoder(seed, encoding_memory, tgt_mask=mask)
+        net_decoded = self.decoderSoftmax(self.decoderLinear(net))
+        
+        return net_decoded
 
 # replier = Transformer()
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
@@ -221,10 +207,10 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
     # outputs_batched.append(np.array(output_batch))
 
 #### Hyperparametres ####
-model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=500, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=2, transformerHiddenDenseSize=64, batch_size=batch_size)
+model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=150, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=2, transformerHiddenDenseSize=64, batch_size=batch_size)
 
 criterion = nn.CrossEntropyLoss()
-lr = 5 # apparently Torch people think this is a good idea
+lr = 1e-2 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
 
@@ -245,17 +231,27 @@ for epoch in range(epochs):
         inp_torch = np2tens(inp)
         oup_torch = np2tens(oup)
 
-        adam.zero_grad()
+        decoder_seed = torch.Tensor([[1]]*batch_size).type(torch.LongTensor)
 
-        decoder_seed = torch.Tensor([[0]]*batch_size).type(torch.LongTensor)
-        prediction = model(inp_torch, mask, decoder_seed)
+        for i in range(max_length-1):
+            adam.zero_grad()
+            prediction = model(inp_torch, decoder_seed, mask)
+            oup_token = oup_torch.narrow(1, i+1, 1)
 
-        loss_val = criterion(prediction.permute(0,2,1), oup_torch)
-        loss_val.backward()
-        plot_grad_flow(model.named_parameters()) # checks gradient flow
-        breakpoint()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-        adam.step()
+            loss_val = criterion(prediction.squeeze(), oup_token.squeeze())
+            loss_val.backward()
+
+            plot_grad_flow(model.named_parameters())
+            breakpoint()
+
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+            adam.step()
+
+            ## One of two options for next token ##
+            # Option 0: Auto-Regression
+            decoder_seed = torch.argmax(prediction, dim=2)
+            # Option 1: Teacher Forcing
+            # decoder_seed = oup_token
 
         batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
 
