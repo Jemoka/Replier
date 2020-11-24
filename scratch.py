@@ -241,8 +241,8 @@ for epoch in range(epochs):
             loss_val = criterion(prediction.squeeze(), oup_token.squeeze())
             loss_val.backward()
 
-            plot_grad_flow(model.named_parameters())
-            breakpoint()
+            # plot_grad_flow(model.named_parameters())
+            # breakpoint()
 
             # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             adam.step()
