@@ -207,10 +207,10 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
     # outputs_batched.append(np.array(output_batch))
 
 #### Hyperparametres ####
-model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=150, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=2, transformerHiddenDenseSize=128, batch_size=batch_size)
+model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=350, numberEncoderLayers=8, numberDecoderLayers=8, attentionHeadCount=4, transformerHiddenDenseSize=256, batch_size=batch_size)
 
 criterion = nn.CrossEntropyLoss()
-lr = 3e-3 # apparently Torch people think this is a good idea
+lr = 1 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
 
@@ -241,8 +241,8 @@ for epoch in range(epochs):
             loss_val = criterion(prediction.squeeze(), oup_token.squeeze())
             loss_val.backward()
 
-            # plot_grad_flow(model.named_parameters())
-            # breakpoint()
+            plot_grad_flow(model.named_parameters())
+            breakpoint()
 
             # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             adam.step()
