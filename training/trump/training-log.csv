@@ -1,7 +1,2 @@
 CheckpointID,ModelID,ModelVersion,Dataset,Initial Runtime,Current Time,Epoch,Loss,Checkpoint Filename
-fdf1a,f6f1e,NOV232020_0,./trump_replies.csv,"11/23/2020, 15:53:50","11/23/2020, 16:01:40",0,7.527735233306885,f6f1e-fdf1a.model
-adc45,f6f1e,NOV232020_0,./trump_replies.csv,"11/23/2020, 15:53:50","11/23/2020, 16:08:33",1,7.527735233306885,f6f1e-adc45.model
-2155f,f6f1e,NOV232020_0,./trump_replies.csv,"11/23/2020, 15:53:50","11/23/2020, 16:15:04",2,7.527735233306885,f6f1e-2155f.model
-b6fda,f6f1e,NOV232020_0,./trump_replies.csv,"11/23/2020, 15:53:50","11/23/2020, 16:21:16",3,7.527735233306885,f6f1e-b6fda.model
-22076,f6f1e,NOV232020_0,./trump_replies.csv,"11/23/2020, 15:53:50","11/23/2020, 16:26:55",4,7.527735233306885,f6f1e-22076.model
-06341,f6f1e,NOV232020_0,./trump_replies.csv,"11/23/2020, 15:53:50","11/23/2020, 16:33:11",5,7.527735233306885,f6f1e-06341.model
+
