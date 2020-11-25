@@ -66,24 +66,21 @@ class Transformer(nn.Module):
         self.numberTokens = numberTokens
 
         self.encoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
-        self.decoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
         self.maxLength = maxLength 
         
         encoderLayer = nn.TransformerEncoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
 
         self.encoder = nn.TransformerEncoder(encoderLayer, numberEncoderLayers)
 
+
+        self.decoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
         
         decoderLayer = nn.TransformerDecoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
-
 
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
 
         self.decoderLinear = nn.Linear(embeddingSize, numberTokens)
         self.decoderSoftmax = nn.Softmax(dim=2)
-
-        initrange = 0.01
-        self.encoderEmbedding.weight.data.uniform_(-initrange, initrange)
 
 
     @staticmethod
@@ -124,17 +121,23 @@ class Transformer(nn.Module):
 
 
     def forward(self, x, decoder_seed, mask):
+
         embedded = self.encoderEmbedding(x)*math.sqrt(self.embeddingSize) #why?
 
-        positional_encoding = self.positionalencoding1d(self.embeddingSize, self.maxLength)
+        positional_encoding = self.positionalencoding1d(self.embeddingSize, self.batch_size)
         encoding_memory = self.encoder(positional_encoding+embedded, mask)
 
         seed = self.decoderEmbedding(decoder_seed)
 
-        net = self.decoder(seed, encoding_memory, tgt_mask=mask)
-        net_decoded = self.decoderSoftmax(self.decoderLinear(net))
+        decoder_input = seed
+
+        for i in range(self.maxLength):
+            positional_encoding = self.positionalencoding1d(self.embeddingSize, self.batch_size)
+            decoder_input_pos = positional_encoding + decoder_input
+            net = self.decoder(decoder_input_pos, encoding_memory, tgt_mask=self.generate_square_subsequent_mask(i+1))
+            decoder_input = torch.cat((seed, net), dim=0)
         
-        return net_decoded
+        return self.decoderSoftmax(self.decoderLinear(net))
 
 # replier = Transformer()
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
@@ -177,7 +180,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 32 
+batch_size = 8
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -207,10 +210,13 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
     # outputs_batched.append(np.array(output_batch))
 
 #### Hyperparametres ####
-model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=200, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=4, transformerHiddenDenseSize=256, batch_size=batch_size)
+model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=150, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=2, transformerHiddenDenseSize=128, batch_size=batch_size)
 
-criterion = nn.CrossEntropyLoss()
-lr = 1 # apparently Torch people think this is a good idea
+def crossEntropy(logits, targets):
+    return torch.mean(torch.sum(- targets * F.log_softmax(logits, -1), -1))
+
+criterion = crossEntropy
+lr = 1e-2 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
 
@@ -223,35 +229,34 @@ modelID = str(uuid.uuid4())[-5:]
 initialRuntime = time.time()
 
 model.train() # duh
-mask = model.generate_square_subsequent_mask(batch_size)
+mask = model.generate_square_subsequent_mask(max_length)
 for epoch in range(epochs):
     checkpointID = str(uuid.uuid4())[-5:]
     batch_data_feed = tqdm(enumerate(zip(inputs_batched, outputs_batched)), total=len(inputs_batched))
     for batch, (inp, oup) in batch_data_feed:
-        inp_torch = np2tens(inp)
-        oup_torch = np2tens(oup)
+        inp_torch = np2tens(inp).transpose(0,1)
+        oup_torch = np2tens(oup).transpose(0,1)
 
-        decoder_seed = torch.Tensor([[1]]*batch_size).type(torch.LongTensor)
+        oup_oh = nn.functional.one_hot(oup_torch, len(vocabulary))
 
-        for i in range(max_length-1):
-            adam.zero_grad()
-            prediction = model(inp_torch, decoder_seed, mask)
-            oup_token = oup_torch.narrow(1, i+1, 1)
+        start_flush = torch.Tensor([[1]*batch_size]).type(torch.LongTensor)
+        decoder_seed = start_flush
 
-            loss_val = criterion(prediction.squeeze(), oup_token.squeeze())
-            loss_val.backward()
+        adam.zero_grad()
 
-            # plot_grad_flow(model.named_parameters())
-            # breakpoint()
+        seq = torch.Tensor()
 
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-            adam.step()
+        prediction = model(inp_torch, decoder_seed, mask)
 
-            ## One of two options for next token ##
-            # Option 0: Auto-Regression
-            decoder_seed = torch.argmax(prediction, dim=2)
-            # Option 1: Teacher Forcing
-            # decoder_seed = oup_token
+        loss_val = criterion(prediction, oup_oh)
+        loss_val.backward()
+
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+
+        plot_grad_flow(model.named_parameters())
+        breakpoint()
+
+        adam.step()
 
         batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
 
