@@ -174,7 +174,7 @@ class Transformer(nn.Module):
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
 
 #### Data Prep ####
-dataset_name = "./trump_toys.csv"
+dataset_name = "./trump_replies.csv"
 
 with open(dataset_name, "r") as dataFile:
     csvReader = csv.reader(dataFile)
@@ -188,7 +188,7 @@ random.shuffle(zipped_dataset)
 
 dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
-tokenizer = get_tokenizer("basic_english")
+tokenizer = get_tokenizer("subword")
 
 vocabulary = defaultdict(lambda: len(vocabulary))
 
@@ -247,7 +247,7 @@ def crossEntropy(logits, targets):
     return torch.mean(torch.sum(- targets * F.log_softmax(logits, -1), -1))
 
 criterion = crossEntropy
-lr = 3e-3 # apparently Torch people think this is a good idea
+lr = 1e-3 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
 
@@ -255,7 +255,7 @@ scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay sched
 epochs = 100
 reporting = 2
 
-version = "NOV252020_0"
+version = "NOV252020_1"
 modelID = str(uuid.uuid4())[-5:]
 initialRuntime = time.time()
 
@@ -282,13 +282,13 @@ for epoch in range(epochs):
         loss_val = criterion(prediction, oup_oh)
         loss_val.backward()
 
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
 
-        plot_grad_flow(model.named_parameters())
 
         adam.step()
 
         batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
+    #plot_grad_flow(model.named_parameters())
 
     # CheckpointID,ModelID,ModelVersion,Dataset,Initial Runtime,Current Time,Epoch,Loss,Checkpoint Filename
 
