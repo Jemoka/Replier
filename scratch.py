@@ -284,7 +284,9 @@ for epoch in range(epochs):
 
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
 
-
+        plot_grad_flow(model.named_parameters())
+        breakpoint()
+        
         adam.step()
 
         batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
