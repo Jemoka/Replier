@@ -174,10 +174,10 @@ class Transformer(nn.Module):
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
 
 #### Data Prep ####
-dataset_name = "./trump_replies.csv"
+dataset_name = "./movie_demo.csv"
 
 with open(dataset_name, "r") as dataFile:
-    csvReader = csv.reader(dataFile)
+    csvReader = csv.reader(dataFile, delimiter="±")
     dataset_raw = [i[4:] for i in csvReader]
 
 dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
@@ -243,11 +243,16 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
 #### Hyperparametres ####
 model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=150, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=2, transformerHiddenDenseSize=128, batch_size=batch_size)
 
-def crossEntropy(logits, targets):
-    return torch.mean(torch.sum(- targets * F.log_softmax(logits, -1), -1))
+def crossEntropy(logits, targets_sparse):
+    targets = nn.functional.one_hot(oup_torch, len(vocabulary))
+    target_mask = torch.not_equal(targets_sparse, 0).float()
+
+    loss_vals = torch.sum(- targets * F.log_softmax(logits, -1), -1)
+
+    return torch.mean(target_mask*loss_vals)
 
 criterion = crossEntropy
-lr = 1e-3 # apparently Torch people think this is a good idea
+lr = 3e-3 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
 
@@ -255,7 +260,7 @@ scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay sched
 epochs = 100
 reporting = 2
 
-version = "NOV252020_1"
+version = "DEC082020_0"
 modelID = str(uuid.uuid4())[-5:]
 initialRuntime = time.time()
 
@@ -268,8 +273,6 @@ for epoch in range(epochs):
         inp_torch = np2tens(inp).transpose(0,1)
         oup_torch = np2tens(oup).transpose(0,1)
 
-        oup_oh = nn.functional.one_hot(oup_torch, len(vocabulary))
-
         start_flush = torch.Tensor([[1]*batch_size]).type(torch.LongTensor)
         decoder_seed = start_flush
 
@@ -279,13 +282,13 @@ for epoch in range(epochs):
 
         prediction = model(inp_torch, decoder_seed, mask)
 
-        loss_val = criterion(prediction, oup_oh)
+        loss_val = criterion(prediction, oup_torch)
         loss_val.backward()
 
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
 
-        plot_grad_flow(model.named_parameters())
-        breakpoint()
+        # plot_grad_flow(model.named_parameters())
+        # breakpoint()
         
         adam.step()
 
@@ -297,7 +300,7 @@ for epoch in range(epochs):
     initialHumanTime = datetime.fromtimestamp(initialRuntime).strftime("%m/%d/%Y, %H:%M:%S")
     nowHumanTime = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
 
-    with open("./training/trump/training-log.csv", "a") as df:
+    with open("./training/moviedemo/training-log.csv", "a") as df:
         writer = csv.writer(df)
         writer.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model'])
 
@@ -311,7 +314,7 @@ for epoch in range(epochs):
         'model_state': model.state_dict(),
         'optimizer_state': adam.state_dict(),
         'lr': scheduler.get_last_lr()
-    }, f'./training/trump/{modelID}-{checkpointID}.model')
+        }, f'./training/moviedemo/{modelID}-{checkpointID}.model')
 
     print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
     scheduler.step()
