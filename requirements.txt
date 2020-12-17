@@ -19,8 +19,8 @@ requests==2.25.0
 revtok==0.0.3
 six==1.15.0
 toml==0.10.2
-torch==1.7.0
-torchtext==0.8.0
+torch==1.7.1
+torchtext==0.8.1
 tqdm==4.54.1
 typing-extensions==3.7.4.3
 urllib3==1.26.2
