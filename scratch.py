@@ -88,10 +88,9 @@ def plot_grad_flow_bars(named_parameters):
 # https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 class Transformer(nn.Module):
     # def __init__(self, numberTokens:int, embeddingSize:int, attentionHead:int, hiddenDenseSize:int, numberLayers:int):
-    def __init__(self, numberTokens, embeddingSize, maxLength, numberEncoderLayers, numberDecoderLayers, attentionHeadCount, transformerHiddenDenseSize, batch_size=32):
+    def __init__(self, numberTokens, embeddingSize, maxLength, numberEncoderLayers, numberDecoderLayers, attentionHeadCount, transformerHiddenDenseSize):
         # Based on https://pytorch.org/tutorials/beginner/transformer_tutorial.html
         super(Transformer, self).__init__()
-        self.batch_size=batch_size
         self.model_type = 'Transformer'
         self.embeddingSize = embeddingSize
         self.numberTokens = numberTokens
@@ -151,11 +150,11 @@ class Transformer(nn.Module):
 
 
 
-    def forward(self, x, decoder_seed, mask):
+    def forward(self, x, decoder_seed, mask, batch_size=32):
 
         embedded = self.encoderEmbedding(x)*math.sqrt(self.embeddingSize) #why?
 
-        positional_encoding = self.positionalencoding1d(self.embeddingSize, self.batch_size)
+        positional_encoding = self.positionalencoding1d(self.embeddingSize, batch_size)
         encoding_memory = self.encoder(positional_encoding+embedded, mask)
 
         seed = self.decoderEmbedding(decoder_seed)
@@ -163,18 +162,17 @@ class Transformer(nn.Module):
         decoder_input = seed
 
         for i in range(self.maxLength):
-            positional_encoding = self.positionalencoding1d(self.embeddingSize, self.batch_size)
+            positional_encoding = self.positionalencoding1d(self.embeddingSize, batch_size)
             decoder_input_pos = positional_encoding + decoder_input
             net = self.decoder(decoder_input_pos, encoding_memory, tgt_mask=self.generate_square_subsequent_mask(i+1))
             decoder_input = torch.cat((seed, net), dim=0)
-        
         return self.decoderSoftmax(self.decoderLinear(net))
 
 # replier = Transformer()
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
 
 #### Data Prep ####
-dataset_name = "./movie_demo.csv"
+dataset_name = "./movie_replies.csv"
 
 with open(dataset_name, "r") as dataFile:
     csvReader = csv.reader(dataFile, delimiter="±")
@@ -184,7 +182,9 @@ dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
 dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 
 zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
-random.shuffle(zipped_dataset)
+
+# crop the dataset b/c we don't have the big bucks
+zipped_dataset = zipped_dataset[-2000:]
 
 dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
@@ -196,8 +196,8 @@ pad = vocabulary["<pad>"]
 sos_token = vocabulary["<sos>"]
 eos_token = vocabulary["<eos>"]
 
-dataset_x_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer("<sos> "+i+" <eos>")] for i in dataset_x_raw][1:]
-dataset_y_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer("<sos> "+i+" <eos>")] for i in dataset_y_raw][1:]
+dataset_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_x_raw][1:]
+dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_y_raw][1:]
 
 vocabulary_inversed = {v: k for k, v in vocabulary.items()}
 
@@ -211,7 +211,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 8
+batch_size = 4
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -240,11 +240,26 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
     # inputs_batched.append(np.array(input_batch))
     # outputs_batched.append(np.array(output_batch))
 
+
+#### Test Sentence Prep ####
+sentences = ["I am a smart.", "He is very smart"];
+prediction_batch_size = len(sentences);
+
+# prediction_x_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer(i+" <eos>")] for i in sentences]
+prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
+# dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_y_raw][1:]
+
+
+prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
+
+prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
+
 #### Hyperparametres ####
-model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=150, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=2, transformerHiddenDenseSize=128, batch_size=batch_size)
+model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
+
 
 def crossEntropy(logits, targets_sparse):
-    targets = nn.functional.one_hot(oup_torch, len(vocabulary))
+    targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
     target_mask = torch.not_equal(targets_sparse, 0).float()
 
     loss_vals = torch.sum(- targets * F.log_softmax(logits, -1), -1)
@@ -252,70 +267,89 @@ def crossEntropy(logits, targets_sparse):
     return torch.mean(target_mask*loss_vals)
 
 criterion = crossEntropy
-lr = 3e-3 # apparently Torch people think this is a good idea
+lr = 5e-3 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
-scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
+scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.98) # decay schedule
 
 #### Training ####
-epochs = 100
-reporting = 2
+def training():
+    epochs = 100
+    reporting = 2
 
-version = "DEC082020_0"
-modelID = str(uuid.uuid4())[-5:]
-initialRuntime = time.time()
+    version = "DEC082020_1"
+    modelID = str(uuid.uuid4())[-5:]
+    initialRuntime = time.time()
 
-model.train() # duh
-mask = model.generate_square_subsequent_mask(max_length)
-for epoch in range(epochs):
-    checkpointID = str(uuid.uuid4())[-5:]
-    batch_data_feed = tqdm(enumerate(zip(inputs_batched, outputs_batched)), total=len(inputs_batched))
-    for batch, (inp, oup) in batch_data_feed:
-        inp_torch = np2tens(inp).transpose(0,1)
-        oup_torch = np2tens(oup).transpose(0,1)
+    model.train() # duh
+    mask = model.generate_square_subsequent_mask(max_length)
+    for epoch in range(epochs):
+        checkpointID = str(uuid.uuid4())[-5:]
+        batch_data_feed = tqdm(enumerate(zip(inputs_batched, outputs_batched)), total=len(inputs_batched))
+        for batch, (inp, oup) in batch_data_feed:
+            inp_torch = np2tens(inp).transpose(0,1)
+            oup_torch = np2tens(oup).transpose(0,1)
 
-        start_flush = torch.Tensor([[1]*batch_size]).type(torch.LongTensor)
-        decoder_seed = start_flush
+            start_flush = torch.Tensor([[1]*batch_size]).type(torch.LongTensor)
+            decoder_seed = start_flush
 
-        adam.zero_grad()
+            adam.zero_grad()
 
-        seq = torch.Tensor()
+            # seq = torch.Tensor()
 
-        prediction = model(inp_torch, decoder_seed, mask)
+            prediction = model(inp_torch, decoder_seed, mask, batch_size)
 
-        loss_val = criterion(prediction, oup_torch)
-        loss_val.backward()
+            loss_val = criterion(prediction, oup_torch)
+            loss_val.backward()
 
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
 
-        # plot_grad_flow(model.named_parameters())
-        # breakpoint()
+            # plot_grad_flow(model.named_parameters())
+            # breakpoint()
+            
+            adam.step()
+
+            batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
+        #plot_grad_flow(model.named_parameters())
+
+        # CheckpointID,ModelID,ModelVersion,Dataset,Initial Runtime,Current Time,Epoch,Loss,Checkpoint Filename
+
+        initialHumanTime = datetime.fromtimestamp(initialRuntime).strftime("%m/%d/%Y, %H:%M:%S")
+        nowHumanTime = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
+
+        with open("./training/movie/training-log.csv", "a") as df:
+            writer = csv.writer(df)
+            writer.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model'])
+
+        torch.save({
+            'version': version,
+            'modelID': modelID,
+            'checkpointID': checkpointID,
+            'datasetName': dataset_name,
+            'epoch': epoch,
+            'loss': loss_val,
+            'model_state': model.state_dict(),
+            'optimizer_state': adam.state_dict(),
+            'lr': scheduler.get_last_lr()
+            }, f'./training/movie/{modelID}-{checkpointID}.model')
+
+        print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
+        scheduler.step()
+
+def inferring(url):
+    checkpoint = torch.load(url, map_location=torch.device('cpu'))
+    model.load_state_dict(checkpoint["model_state"])
+    model.eval()
+
+                
+    with torch.no_grad():
+        mask = model.generate_square_subsequent_mask(max_length)
+        start_flush = torch.Tensor([[1]*prediction_batch_size]).type(torch.LongTensor)
+        prediction = model(prediction_x_torch, start_flush, mask, prediction_batch_size)
+
+        prediction_values = np.array(torch.argmax(prediction,2).transpose(0,1))
         
-        adam.step()
+    prediction_sentences = [[vocabulary_inversed[i] for i in e] for e in prediction_values]
+    breakpoint()
 
-        batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
-    #plot_grad_flow(model.named_parameters())
-
-    # CheckpointID,ModelID,ModelVersion,Dataset,Initial Runtime,Current Time,Epoch,Loss,Checkpoint Filename
-
-    initialHumanTime = datetime.fromtimestamp(initialRuntime).strftime("%m/%d/%Y, %H:%M:%S")
-    nowHumanTime = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
-
-    with open("./training/moviedemo/training-log.csv", "a") as df:
-        writer = csv.writer(df)
-        writer.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model'])
-
-    torch.save({
-        'version': version,
-        'modelID': modelID,
-        'checkpointID': checkpointID,
-        'datasetName': dataset_name,
-        'epoch': epoch,
-        'loss': loss_val,
-        'model_state': model.state_dict(),
-        'optimizer_state': adam.state_dict(),
-        'lr': scheduler.get_last_lr()
-        }, f'./training/moviedemo/{modelID}-{checkpointID}.model')
-
-    print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
-    scheduler.step()
+inferring("./training/movie/7300c-ed227.model")
 
