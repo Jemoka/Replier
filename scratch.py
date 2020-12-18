@@ -154,7 +154,7 @@ class Transformer(nn.Module):
 
         embedded = self.encoderEmbedding(x)*math.sqrt(self.embeddingSize) #why?
 
-        positional_encoding = self.positionalencoding1d(self.embeddingSize, batch_size)
+        positional_encoding = self.positionalencoding1d(self.embeddingSize, self.batch_size).cuda()
         encoding_memory = self.encoder(positional_encoding+embedded, mask)
 
         seed = self.decoderEmbedding(decoder_seed)
@@ -162,9 +162,9 @@ class Transformer(nn.Module):
         decoder_input = seed
 
         for i in range(self.maxLength):
-            positional_encoding = self.positionalencoding1d(self.embeddingSize, batch_size)
+            positional_encoding = self.positionalencoding1d(self.embeddingSize, self.batch_size).cuda()
             decoder_input_pos = positional_encoding + decoder_input
-            net = self.decoder(decoder_input_pos, encoding_memory, tgt_mask=self.generate_square_subsequent_mask(i+1))
+            net = self.decoder(decoder_input_pos, encoding_memory, tgt_mask=self.generate_square_subsequent_mask(i+1).cuda())
             decoder_input = torch.cat((seed, net), dim=0)
         return self.decoderSoftmax(self.decoderLinear(net))
 
@@ -181,10 +181,15 @@ with open(dataset_name, "r") as dataFile:
 dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
 dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 
-zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
+# <<<<<<< HEAD
+# zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
 
-# crop the dataset b/c we don't have the big bucks
-zipped_dataset = zipped_dataset[-2000:]
+# # crop the dataset b/c we don't have the big bucks
+# zipped_dataset = zipped_dataset[-2000:]
+# =======
+zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))[-2000:]
+random.shuffle(zipped_dataset)
+# >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
@@ -255,8 +260,12 @@ prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_
 prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
 
 #### Hyperparametres ####
-model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
+# <<<<<<< HEAD
+# model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
 
+# =======
+model = Transformer(len(vocabulary), maxLength=max_length, embeddingSize=128, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=128).cuda()
+# >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 def crossEntropy(logits, targets_sparse):
     targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
@@ -281,18 +290,32 @@ def training():
     initialRuntime = time.time()
 
     model.train() # duh
-    mask = model.generate_square_subsequent_mask(max_length)
+    mask = model.generate_square_subsequent_mask(max_length).cuda()
     for epoch in range(epochs):
         checkpointID = str(uuid.uuid4())[-5:]
         batch_data_feed = tqdm(enumerate(zip(inputs_batched, outputs_batched)), total=len(inputs_batched))
         for batch, (inp, oup) in batch_data_feed:
-            inp_torch = np2tens(inp).transpose(0,1)
-            oup_torch = np2tens(oup).transpose(0,1)
+            inp_torch = np2tens(inp).transpose(0,1).cuda()
+            oup_torch = np2tens(oup).transpose(0,1).cuda()
 
-            start_flush = torch.Tensor([[1]*batch_size]).type(torch.LongTensor)
+# <<<<<<< HEAD
+            start_flush = torch.Tensor([[1]*batch_size]).type(torch.LongTensor).cuda()
             decoder_seed = start_flush
 
             adam.zero_grad()
+# # =======
+# model.train() # duh
+# mask = model.generate_square_subsequent_mask(max_length).cuda()
+# for epoch in range(epochs):
+    # checkpointID = str(uuid.uuid4())[-5:]
+    # batch_data_feed = tqdm(enumerate(zip(inputs_batched, outputs_batched)), total=len(inputs_batched))
+    # for batch, (inp, oup) in batch_data_feed:
+        # inp_torch = np2tens(inp).transpose(0,1).cuda()
+        # oup_torch = np2tens(oup).transpose(0,1).cuda()
+
+        # start_flush = torch.Tensor([[1]*batch_size]).type(torch.LongTensor).cuda()
+        # decoder_seed = start_flush
+# >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
             # seq = torch.Tensor()
 
@@ -303,10 +326,14 @@ def training():
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
 
+# <<<<<<< HEAD
             # plot_grad_flow(model.named_parameters())
             # breakpoint()
             
             adam.step()
+# =======
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+# >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
             batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
         #plot_grad_flow(model.named_parameters())
