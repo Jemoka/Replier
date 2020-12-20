@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optimizer
 import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter
 from torchtext.data.utils import get_tokenizer
 
 import matplotlib.pyplot as plt
@@ -110,7 +111,7 @@ class Transformer(nn.Module):
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
 
         self.decoderLinear = nn.Linear(embeddingSize, numberTokens)
-        self.decoderSoftmax = nn.Softmax(dim=2)
+        # self.decoderSoftmax = nn.Softmax(dim=2)
 
 
     @staticmethod
@@ -151,27 +152,30 @@ class Transformer(nn.Module):
 
 
     def forward(self, x, batch_size=32):
-        x = x.transpose(0,1)
-        mask = model.module.generate_square_subsequent_mask(self.maxLength).cuda()
-
         embedded = self.encoderEmbedding(x)*math.sqrt(self.embeddingSize) #why?
 
-        positional_encoding = self.positionalencoding1d(self.embeddingSize, batch_size).cuda()
-        encoding_memory = self.encoder(positional_encoding+embedded, mask)
+        positional_encoding = self.positionalencoding1d(self.embeddingSize, self.maxLength).cuda()
+        encoder_input = embedded+positional_encoding
 
-
-        decoder_seed = torch.Tensor([[1]*batch_size]).type(torch.LongTensor).cuda()
+        encoder_padding_mask = torch.not_equal(x, 0)
+        encoder_memory = self.encoder(encoder_input.transpose(0,1), src_key_padding_mask=encoder_padding_mask)
+    
+        decoder_seed = torch.Tensor([[1]]*batch_size).type(torch.LongTensor).cuda()
         seed = self.decoderEmbedding(decoder_seed)
 
-        decoder_input = seed
+        decoder_memory = seed
 
         for i in range(self.maxLength):
-            positional_encoding = self.positionalencoding1d(self.embeddingSize, batch_size).cuda()
-            decoder_input_pos = positional_encoding + decoder_input
-            net = self.decoder(decoder_input_pos, encoding_memory, tgt_mask=self.generate_square_subsequent_mask(i+1).cuda())
-            decoder_input = torch.cat((seed, net), dim=0)
+            positional_encoding = self.positionalencoding1d(self.embeddingSize, i+1).cuda()
+            decoder_input = positional_encoding + decoder_memory
 
-        result = self.decoderSoftmax(self.decoderLinear(net)).transpose(0,1)
+            decoder_mask = self.generate_square_subsequent_mask(i+1).cuda()
+
+            net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask).transpose(0,1)
+
+            decoder_memory = torch.cat((seed, net), dim=1)
+
+        result = self.decoderLinear(net)
         return result
 
 # replier = Transformer()
@@ -194,7 +198,6 @@ dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 # zipped_dataset = zipped_dataset[-2000:]
 # =======
 zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))[-2000:]
-random.shuffle(zipped_dataset)
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
@@ -222,7 +225,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 4
+batch_size = 8
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -270,7 +273,7 @@ prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
 # model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
 
 # =======
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=128, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=128).cuda())
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=128, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=256).cuda())
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 def crossEntropy(logits, targets_sparse):
@@ -282,7 +285,7 @@ def crossEntropy(logits, targets_sparse):
     return torch.mean(target_mask*loss_vals)
 
 criterion = crossEntropy
-lr = 5e-3 # apparently Torch people think this is a good idea
+lr = 3e-3 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.98) # decay schedule
 
@@ -295,22 +298,38 @@ def training():
     modelID = str(uuid.uuid4())[-5:]
     initialRuntime = time.time()
 
+    writer = SummaryWriter(f'./training/movie/logs/{modelID}')
+
+# random.shuffle(zipped_dataset)
+    
+
     model.train() # duh
     for epoch in range(epochs):
         checkpointID = str(uuid.uuid4())[-5:]
         batch_data_feed = tqdm(enumerate(zip(inputs_batched, outputs_batched)), total=len(inputs_batched))
         for batch, (inp, oup) in batch_data_feed:
             inp_torch = np2tens(inp).cuda()
-            oup_torch = np2tens(oup).transpose(0,1).cuda()
+            oup_torch = np2tens(oup).cuda()
 
 
             adam.zero_grad()
-            prediction = model(inp_torch, int(batch_size/2)).transpose(0,1)
+            prediction = model(inp_torch, int(batch_size/2))
 
             loss_val = criterion(prediction, oup_torch)
             loss_val.backward()
 
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+            prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
+        
+            prediction_sentences = [[vocabulary_inversed[i] for i in e] for e in prediction_values]
+
+            final_sent = ""
+            for word in prediction_sentences[0]:
+                final_sent = final_sent + word + " "
+
+            writer.add_scalar('Train/loss', loss_val.item(), batch+(epoch*len(inputs_batched)))
+            writer.add_text('Train/sample', final_sent, batch+(epoch*len(inputs_batched)))
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
 
             # plot_grad_flow(model.named_parameters())
             # breakpoint()
@@ -325,7 +344,7 @@ def training():
         initialHumanTime = datetime.fromtimestamp(initialRuntime).strftime("%m/%d/%Y, %H:%M:%S")
         nowHumanTime = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
 
-        with open("./training/movie/training-log.csv", "a") as df:
+        with open("./training/movie/training-log.csv", "a+") as df:
             writer = csv.writer(df)
             writer.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model'])
 
@@ -343,6 +362,7 @@ def training():
 
         print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
         scheduler.step()
+    writer.close()
 
 def inferring(url):
     checkpoint = torch.load(url, map_location=torch.device('cpu'))
