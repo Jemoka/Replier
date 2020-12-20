@@ -111,7 +111,7 @@ class Transformer(nn.Module):
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
 
         self.decoderLinear = nn.Linear(embeddingSize, numberTokens)
-        # self.decoderSoftmax = nn.Softmax(dim=2)
+        self.decoderSoftmax = nn.Softmax(dim=1)
 
 
     @staticmethod
@@ -175,7 +175,7 @@ class Transformer(nn.Module):
 
             decoder_memory = torch.cat((seed, net), dim=1)
 
-        result = self.decoderLinear(net)
+        result = self.decoderSoftmax(self.decoderLinear(net))
         return result
 
 # replier = Transformer()
@@ -215,7 +215,7 @@ dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in token
 
 vocabulary_inversed = {v: k for k, v in vocabulary.items()}
 
-max_length = max(max([len(i) for i in dataset_x_tokenized]), max([len(i) for i in dataset_y_tokenized]))
+max_length = max(max([len(i) for i in dataset_x_tokenized]), max([len(i) for i in dataset_y_tokenized]))+2 # +2 for safety ig
 
 if max_length % 2 != 0:
     max_length += 1
@@ -273,19 +273,28 @@ prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
 # model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
 
 # =======
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=128, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=256).cuda())
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=256, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=256).cuda())
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
-def crossEntropy(logits, targets_sparse):
+# Weight Initialization
+def init_weights(m):
+    if type(m) == nn.Linear:
+        torch.nn.init.xavier_uniform(m.weight)
+        m.bias.data.fill_(0.01)
+model.apply(init_weights)
+
+def crossEntropy(logits, targets_sparse, epsilon=1e-8):
     targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
     target_mask = torch.not_equal(targets_sparse, 0).float()
 
-    loss_vals = torch.sum(- targets * F.log_softmax(logits, -1), -1)
+    loss_vals = torch.sum(- targets * F.log_softmax(logits+epsilon, -1), -1)
 
-    return torch.mean(target_mask*loss_vals)
+    desired_output = torch.mean(target_mask*loss_vals)
+    return desired_output
+        
 
 criterion = crossEntropy
-lr = 3e-3 # apparently Torch people think this is a good idea
+lr = 1e-2 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.98) # decay schedule
 
@@ -317,10 +326,20 @@ def training():
 
             loss_val = criterion(prediction, oup_torch)
             loss_val.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+            adam.step()
 
             prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
         
-            prediction_sentences = [[vocabulary_inversed[i] for i in e] for e in prediction_values]
+            prediction_sentences = []
+            for e in prediction_values:
+                prediction_value = []
+                for i in e:
+                    try: 
+                        prediction_value.append(vocabulary_inversed[i])
+                    except KeyError:
+                        prediction_value.append("<err>")
+                prediction_sentences.append(prediction_value)
 
             final_sent = ""
             for word in prediction_sentences[0]:
@@ -329,12 +348,10 @@ def training():
             writer.add_scalar('Train/loss', loss_val.item(), batch+(epoch*len(inputs_batched)))
             writer.add_text('Train/sample', final_sent, batch+(epoch*len(inputs_batched)))
 
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
 
             # plot_grad_flow(model.named_parameters())
             # breakpoint()
             
-            adam.step()
 
             batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
         #plot_grad_flow(model.named_parameters())
@@ -345,8 +362,8 @@ def training():
         nowHumanTime = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
 
         with open("./training/movie/training-log.csv", "a+") as df:
-            writer = csv.writer(df)
-            writer.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model'])
+            csvfile = csv.writer(df)
+            csvfile.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model'])
 
         torch.save({
             'version': version,
