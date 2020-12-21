@@ -225,7 +225,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 8
+batch_size = 4
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -273,7 +273,7 @@ prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
 # model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
 
 # =======
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=256, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=256).cuda())
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=512, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=256).cuda())
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 # Weight Initialization
@@ -294,7 +294,7 @@ def crossEntropy(logits, targets_sparse, epsilon=1e-8):
         
 
 criterion = crossEntropy
-lr = 1e-2 # apparently Torch people think this is a good idea
+lr = 5e-2 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.98) # decay schedule
 
@@ -315,7 +315,12 @@ def training():
     model.train() # duh
     for epoch in range(epochs):
         checkpointID = str(uuid.uuid4())[-5:]
-        batch_data_feed = tqdm(enumerate(zip(inputs_batched, outputs_batched)), total=len(inputs_batched))
+        batch_data_group = list(zip(inputs_batched, outputs_batched))
+
+        random.shuffle(batch_data_group)
+
+        batch_data_feed = tqdm(enumerate(batch_data_group), total=len(inputs_batched))
+
         for batch, (inp, oup) in batch_data_feed:
             inp_torch = np2tens(inp).cuda()
             oup_torch = np2tens(oup).cuda()
@@ -326,7 +331,6 @@ def training():
 
             loss_val = criterion(prediction, oup_torch)
             loss_val.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
             adam.step()
 
             prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
