@@ -20,8 +20,11 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from torchtext.data.utils import get_tokenizer
 
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import *
+
+# matplotlib.use('pdf')  # Or any other X11 back-end
 
 #### Utilities ####
 # util to tenserify them numpy arrays
@@ -45,16 +48,18 @@ def plot_grad_flow(named_parameters):
         if(p.requires_grad) and ("bias" not in n):
             layers.append(n)
             ave_grads.append(p.grad.abs().mean())
-    plt.plot(ave_grads, alpha=0.3, color="b")
-    plt.hlines(0, 0, len(ave_grads)+1, linewidth=1, color="k" )
-    plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
-    plt.xlim(xmin=0, xmax=len(ave_grads))
-    plt.xlabel("Layers")
-    plt.ylabel("average gradient")
-    plt.title("Gradient flow")
-    plt.grid(True)
-    plt.ion()
-    plt.show()
+
+    print([i.item() for i in ave_grads])
+#     plt.plot(ave_grads, alpha=0.3, color="b")
+    # plt.hlines(0, 0, len(ave_grads)+1, linewidth=1, color="k" )
+    # plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
+    # plt.xlim(xmin=0, xmax=len(ave_grads))
+    # plt.xlabel("Layers")
+    # plt.ylabel("average gradient")
+    # plt.title("Gradient flow")
+    # plt.grid(True)
+    # plt.ion()
+    # plt.show()
     
 def plot_grad_flow_bars(named_parameters):
     '''Plots the gradients flowing through different layers in the net during training.
@@ -70,20 +75,21 @@ def plot_grad_flow_bars(named_parameters):
             layers.append(n)
             ave_grads.append(p.grad.abs().mean())
             max_grads.append(p.grad.abs().max())
-    plt.bar(np.arange(len(max_grads)), max_grads, alpha=0.1, lw=1, color="c")
-    plt.bar(np.arange(len(max_grads)), ave_grads, alpha=0.1, lw=1, color="b")
-    plt.hlines(0, 0, len(ave_grads)+1, lw=2, color="k" )
-    plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
-    plt.xlim(left=0, right=len(ave_grads))
-    plt.ylim(bottom = -0.001, top=0.02) # zoom in on the lower gradient regions
-    plt.xlabel("Layers")
-    plt.ylabel("average gradient")
-    plt.title("Gradient flow")
-    plt.grid(True)
-    plt.legend([Line2D([0], [0], color="c", lw=4),
-                Line2D([0], [0], color="b", lw=4),
-                Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
-    plt.show()
+
+#     plt.bar(np.arange(len(max_grads)), max_grads, alpha=0.1, lw=1, color="c")
+    # plt.bar(np.arange(len(max_grads)), ave_grads, alpha=0.1, lw=1, color="b")
+    # plt.hlines(0, 0, len(ave_grads)+1, lw=2, color="k" )
+    # plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
+    # plt.xlim(left=0, right=len(ave_grads))
+    # plt.ylim(bottom = -0.001, top=0.02) # zoom in on the lower gradient regions
+    # plt.xlabel("Layers")
+    # plt.ylabel("average gradient")
+    # plt.title("Gradient flow")
+    # plt.grid(True)
+    # plt.legend([Line2D([0], [0], color="c", lw=4),
+                # Line2D([0], [0], color="b", lw=4),
+                # Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
+    # plt.show()
 
 #### Network ####
 # https://pytorch.org/tutorials/beginner/transformer_tutorial.html
@@ -111,7 +117,8 @@ class Transformer(nn.Module):
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
 
         self.decoderLinear = nn.Linear(embeddingSize, numberTokens)
-        self.decoderSoftmax = nn.Softmax(dim=1)
+        self.decoderRELU = nn.LeakyReLU(0.1)
+        self.decoderSoftmax = nn.Softmax(dim=2)
 
 
     @staticmethod
@@ -160,22 +167,23 @@ class Transformer(nn.Module):
         encoder_padding_mask = torch.not_equal(x, 0)
         encoder_memory = self.encoder(encoder_input.transpose(0,1), src_key_padding_mask=encoder_padding_mask)
     
-        decoder_seed = torch.Tensor([[1]]*batch_size).type(torch.LongTensor).cuda()
-        seed = self.decoderEmbedding(decoder_seed)
+        # decoder_seed = torch.Tensor([[1]]*batch_size).type(torch.LongTensor).cuda()
+        # seed = self.decoderEmbedding(decoder_seed)
 
-        decoder_memory = seed
+        # decoder_memory = seed
 
-        for i in range(self.maxLength):
-            positional_encoding = self.positionalencoding1d(self.embeddingSize, i+1).cuda()
-            decoder_input = positional_encoding + decoder_memory
+        # for i in range(self.maxLength):
+            # positional_encoding = self.positionalencoding1d(self.embeddingSize, i+1).cuda()
+            # decoder_input = positional_encoding + decoder_memory
 
-            decoder_mask = self.generate_square_subsequent_mask(i+1).cuda()
+            # decoder_mask = self.generate_square_subsequent_mask(i+1).cuda()
 
-            net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask).transpose(0,1)
+            # net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask).transpose(0,1)
 
-            decoder_memory = torch.cat((seed, net), dim=1)
+            # decoder_memory = torch.cat((seed, net), dim=1)
 
-        result = self.decoderSoftmax(self.decoderLinear(net))
+        # result = self.decoderSoftmax(self.decoderRELU(self.decoderLinear(net)))
+        result = self.decoderSoftmax(self.decoderRELU(self.decoderLinear(encoder_memory))).transpose(0,1)
         return result
 
 # replier = Transformer()
@@ -273,14 +281,17 @@ prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
 # model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
 
 # =======
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=512, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=256).cuda())
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=512, numberEncoderLayers=3, numberDecoderLayers=3, attentionHeadCount=4, transformerHiddenDenseSize=256).cuda())
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 # Weight Initialization
 def init_weights(m):
     if type(m) == nn.Linear:
-        torch.nn.init.xavier_uniform(m.weight)
-        m.bias.data.fill_(0.01)
+        torch.nn.init.xavier_uniform_(m.weight.data)
+        m.bias.data.fill_(0)
+    elif type(m) == nn.LayerNorm:
+        torch.nn.init.normal_(m.weight.data)
+        m.bias.data.fill_(0)
 model.apply(init_weights)
 
 def crossEntropy(logits, targets_sparse, epsilon=1e-8):
@@ -289,12 +300,12 @@ def crossEntropy(logits, targets_sparse, epsilon=1e-8):
 
     loss_vals = torch.sum(- targets * F.log_softmax(logits+epsilon, -1), -1)
 
-    desired_output = torch.mean(target_mask*loss_vals)
-    return desired_output
+    return torch.mean(target_mask*loss_vals)
         
 
+# criterion = torch.nn.CrossEntropyLoss()
 criterion = crossEntropy
-lr = 5e-2 # apparently Torch people think this is a good idea
+lr = 2e-4 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.98) # decay schedule
 
@@ -303,7 +314,7 @@ def training():
     epochs = 100
     reporting = 2
 
-    version = "DEC082020_1"
+    version = "DEC082020_1_NODEC"
     modelID = str(uuid.uuid4())[-5:]
     initialRuntime = time.time()
 
@@ -325,12 +336,13 @@ def training():
             inp_torch = np2tens(inp).cuda()
             oup_torch = np2tens(oup).cuda()
 
-
             adam.zero_grad()
             prediction = model(inp_torch, int(batch_size/2))
 
             loss_val = criterion(prediction, oup_torch)
             loss_val.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+
             adam.step()
 
             prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
@@ -357,7 +369,7 @@ def training():
             # breakpoint()
             
 
-            batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.2f} |')
+            batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.5f} |')
         #plot_grad_flow(model.named_parameters())
 
         # CheckpointID,ModelID,ModelVersion,Dataset,Initial Runtime,Current Time,Epoch,Loss,Checkpoint Filename
