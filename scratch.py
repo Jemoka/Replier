@@ -110,11 +110,11 @@ class Transformer(nn.Module):
         self.encoder = nn.TransformerEncoder(encoderLayer, numberEncoderLayers)
 
 
-        self.decoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
+        # self.decoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
         
-        decoderLayer = nn.TransformerDecoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
+        # decoderLayer = nn.TransformerDecoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
 
-        self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
+        # self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
 
         self.decoderLinear = nn.Linear(embeddingSize, numberTokens)
         self.decoderRELU = nn.LeakyReLU(0.1)
@@ -205,7 +205,7 @@ dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 # # crop the dataset b/c we don't have the big bucks
 # zipped_dataset = zipped_dataset[-2000:]
 # =======
-zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))[-2000:]
+zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))[-5000:]
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
@@ -233,7 +233,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 4
+batch_size = 128
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -281,7 +281,7 @@ prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
 # model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
 
 # =======
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=512, numberEncoderLayers=3, numberDecoderLayers=3, attentionHeadCount=4, transformerHiddenDenseSize=256).cuda())
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=512, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=256).cuda())
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 # Weight Initialization
@@ -298,20 +298,20 @@ def crossEntropy(logits, targets_sparse, epsilon=1e-8):
     targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
     target_mask = torch.not_equal(targets_sparse, 0).float()
 
-    loss_vals = torch.sum(- targets * F.log_softmax(logits+epsilon, -1), -1)
+    cross_entropy = torch.mean(-torch.log(torch.gather(logits, 1, targets).squeeze(1)), -1)
 
-    return torch.mean(target_mask*loss_vals)
+    return torch.mean(target_mask*cross_entropy)
         
 
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = crossEntropy
-lr = 2e-4 # apparently Torch people think this is a good idea
+lr = 5e-3 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.98) # decay schedule
 
 #### Training ####
 def training():
-    epochs = 100
+    epochs = 1000
     reporting = 2
 
     version = "DEC082020_1_NODEC"
@@ -340,8 +340,12 @@ def training():
             prediction = model(inp_torch, int(batch_size/2))
 
             loss_val = criterion(prediction, oup_torch)
+
+            # target_mask = torch.not_equal(oup_torch, 0).float()
+            # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
+            # loss_val = torch.mean(target_mask*loss_matrix)
             loss_val.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
 
             adam.step()
 
