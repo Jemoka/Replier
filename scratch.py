@@ -110,11 +110,11 @@ class Transformer(nn.Module):
         self.encoder = nn.TransformerEncoder(encoderLayer, numberEncoderLayers)
 
 
-        # self.decoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
+        self.decoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
         
-        # decoderLayer = nn.TransformerDecoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
+        decoderLayer = nn.TransformerDecoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
 
-        # self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
+        self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
 
         self.decoderLinear = nn.Linear(embeddingSize, numberTokens)
         self.decoderRELU = nn.LeakyReLU(0.1)
@@ -158,7 +158,12 @@ class Transformer(nn.Module):
 
 
 
-    def forward(self, x, batch_size=32):
+    def forward(self, x, raw_seed=None, batch_size=32):
+        if raw_seed != None:
+            decoder_seed = raw_seed
+        else:
+            decoder_seed = torch.Tensor([[1]]*batch_size).type(torch.LongTensor).cuda()
+
         embedded = self.encoderEmbedding(x)*math.sqrt(self.embeddingSize) #why?
 
         positional_encoding = self.positionalencoding1d(self.embeddingSize, self.maxLength).cuda()
@@ -167,23 +172,33 @@ class Transformer(nn.Module):
         encoder_padding_mask = torch.not_equal(x, 0)
         encoder_memory = self.encoder(encoder_input.transpose(0,1), src_key_padding_mask=encoder_padding_mask)
     
-        # decoder_seed = torch.Tensor([[1]]*batch_size).type(torch.LongTensor).cuda()
-        # seed = self.decoderEmbedding(decoder_seed)
+        # decoder_seed = 
+        seed = self.decoderEmbedding(decoder_seed)
 
-        # decoder_memory = seed
+        decoder_memory = seed
 
-        # for i in range(self.maxLength):
-            # positional_encoding = self.positionalencoding1d(self.embeddingSize, i+1).cuda()
-            # decoder_input = positional_encoding + decoder_memory
+        if self.training:
+            positional_encoding = self.positionalencoding1d(self.embeddingSize, self.maxLength).cuda()
+            decoder_input = positional_encoding + decoder_memory
 
-            # decoder_mask = self.generate_square_subsequent_mask(i+1).cuda()
+            decoder_mask = self.generate_square_subsequent_mask(self.maxLength).cuda()
+            decoder_padding_mask = torch.not_equal(decoder_seed, 0)
 
-            # net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask).transpose(0,1)
+            # net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask, tgt_key_padding_mask=decoder_padding_mask, memory_key_padding_mask=encoder_padding_mask).transpose(0,1) <- but this nans out
+            
+            net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask, memory_key_padding_mask=encoder_padding_mask).transpose(0,1)
+        else:
+            for i in range(self.maxLength):
+                positional_encoding = self.positionalencoding1d(self.embeddingSize, i+1).cuda()
+                decoder_input = positional_encoding + decoder_memory
 
-            # decoder_memory = torch.cat((seed, net), dim=1)
+                decoder_mask = self.generate_square_subsequent_mask(i+1).cuda()
 
-        # result = self.decoderSoftmax(self.decoderRELU(self.decoderLinear(net)))
-        result = self.decoderSoftmax(self.decoderRELU(self.decoderLinear(encoder_memory))).transpose(0,1)
+                net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask).transpose(0,1)
+
+                decoder_memory = torch.cat((seed, net), dim=1)
+
+        result = self.decoderSoftmax(self.decoderRELU(self.decoderLinear(net)))
         return result
 
 # replier = Transformer()
@@ -205,7 +220,7 @@ dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 # # crop the dataset b/c we don't have the big bucks
 # zipped_dataset = zipped_dataset[-2000:]
 # =======
-zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))[-5000:]
+zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))[-2000:]
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
@@ -233,7 +248,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 128
+batch_size = 4
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -305,16 +320,21 @@ def crossEntropy(logits, targets_sparse, epsilon=1e-8):
 
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = crossEntropy
-lr = 5e-3 # apparently Torch people think this is a good idea
+lr = 1e-3 # apparently Torch people think this is a good idea
+# apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
-scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.98) # decay schedule
+scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.99) # decay schedule
 
 #### Training ####
-def training():
+def training(retrain=None):
+    if retrain is not None:
+        checkpoint = torch.load(retrain, map_location=torch.device('cpu'))
+        model.load_state_dict(checkpoint["model_state"])
+
     epochs = 1000
     reporting = 2
 
-    version = "DEC082020_1_NODEC"
+    version = "DEC212020_1_NODEC"
     modelID = str(uuid.uuid4())[-5:]
     initialRuntime = time.time()
 
@@ -333,19 +353,24 @@ def training():
         batch_data_feed = tqdm(enumerate(batch_data_group), total=len(inputs_batched))
 
         for batch, (inp, oup) in batch_data_feed:
-            inp_torch = np2tens(inp).cuda()
-            oup_torch = np2tens(oup).cuda()
+            encinp_torch = np2tens(inp).cuda()
+            decinp_torch = np2tens(oup).cuda()
+
+            padding_row = torch.zeros(batch_size,1)
+            oup_torch = (torch.cat((np2tens(oup)[:, 1:], padding_row), dim=1)).long().cuda()
+
+            # decInp_torch
 
             adam.zero_grad()
-            prediction = model(inp_torch, int(batch_size/2))
+            prediction = model(encinp_torch, decinp_torch, int(batch_size/2))
 
             loss_val = criterion(prediction, oup_torch)
 
-            # target_mask = torch.not_equal(oup_torch, 0).float()
+#             target_mask = torch.not_equal(oup_torch, 0).float()
             # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
             # loss_val = torch.mean(target_mask*loss_matrix)
             loss_val.backward()
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
 
             adam.step()
 
@@ -383,7 +408,7 @@ def training():
 
         with open("./training/movie/training-log.csv", "a+") as df:
             csvfile = csv.writer(df)
-            csvfile.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model'])
+            csvfile.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model', f'{retrain}'])
 
         torch.save({
             'version': version,
@@ -419,6 +444,6 @@ def inferring(url):
 
 # inferring("./training/movie/7300c-ed227.model")
 
-training()
+training("./training/movie/7ec4b-76674.model")
 
 
