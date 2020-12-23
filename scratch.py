@@ -320,7 +320,7 @@ def crossEntropy(logits, targets_sparse, epsilon=1e-8):
 
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = crossEntropy
-lr = 5e-3 # apparently Torch people think this is a good idea
+lr = 5e-4 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
