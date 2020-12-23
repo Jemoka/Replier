@@ -248,7 +248,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size =  128
+batch_size = 32
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -345,9 +345,10 @@ def training(retrain=None):
 
     model.train() # duh
     for epoch in range(epochs):
-        if (epoch % 4 == 0) and epoch != 0:
-            print(f'Taking a 5 min fridge break before starting: {epoch}...')
-            time.sleep(60*5)
+        if (epoch % 3 == 0) and epoch != 0:
+            print(f'Taking a 10 min fridge break before starting at {epoch}...')
+            for _ in tqdm(range(60*10)):
+                time.sleep(1)
             print(f'Fridge break done. Let\'s get cracking on epoch {epoch}')
 
         checkpointID = str(uuid.uuid4())[-5:]
@@ -449,6 +450,6 @@ def inferring(url):
 
 # inferring("./training/movie/7300c-ed227.model")
 
-training("./training/movie/c5b1f-b82e9.model")
+training("./training/movie/8ea3f-5953b.model")
 
 
