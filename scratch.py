@@ -322,7 +322,7 @@ criterion = crossEntropy
 lr = 4e-3 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
-scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
+scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.99) # decay schedule
 
 #### Training ####
 def training(retrain=None):
@@ -450,6 +450,6 @@ def inferring(url):
 
 # inferring("./training/movie/7300c-ed227.model")
 
-training("./training/movie/d8016-ce366.model")
+training()
 
 
