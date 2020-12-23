@@ -319,7 +319,7 @@ def crossEntropy(logits, targets_sparse, epsilon=1e-8):
 
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = crossEntropy
-lr = 1e-3 # apparently Torch people think this is a good idea
+lr = 4e-3 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
@@ -344,12 +344,12 @@ def training(retrain=None):
 
     model.train() # duh
     for epoch in range(epochs):
-         # and epoch != 0
-        if (epoch % 5 == 0):
-            print(f'Taking a 10 min fridge break before starting at {epoch}...')
-            for _ in tqdm(range(60*10)):
-                time.sleep(1)
-            print(f'Fridge break done. Let\'s get cracking on epoch {epoch}')
+        #
+#         if (epoch % 3 == 0) and epoch != 0:
+            # print(f'Taking a 15 min fridge break before starting at {epoch}...')
+            # for _ in tqdm(range(60*15)):
+                # time.sleep(1)
+            # print(f'Fridge break done. Let\'s get cracking on epoch {epoch}')
 
         checkpointID = str(uuid.uuid4())[-5:]
         batch_data_group = list(zip(inputs_batched, outputs_batched))
@@ -450,6 +450,6 @@ def inferring(url):
 
 # inferring("./training/movie/7300c-ed227.model")
 
-training()
+training("./training/movie/d8016-ce366.model")
 
 
