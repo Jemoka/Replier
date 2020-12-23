@@ -248,7 +248,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 4
+batch_size =  128
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -320,10 +320,10 @@ def crossEntropy(logits, targets_sparse, epsilon=1e-8):
 
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = crossEntropy
-lr = 1e-3 # apparently Torch people think this is a good idea
+lr = 5e-3 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
-scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.99) # decay schedule
+scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
 
 #### Training ####
 def training(retrain=None):
@@ -345,6 +345,11 @@ def training(retrain=None):
 
     model.train() # duh
     for epoch in range(epochs):
+        if (epoch % 4 == 0) and epoch != 0:
+            print(f'Taking a 5 min fridge break before starting: {epoch}...')
+            time.sleep(60*5)
+            print(f'Fridge break done. Let\'s get cracking on epoch {epoch}')
+
         checkpointID = str(uuid.uuid4())[-5:]
         batch_data_group = list(zip(inputs_batched, outputs_batched))
 
@@ -444,6 +449,6 @@ def inferring(url):
 
 # inferring("./training/movie/7300c-ed227.model")
 
-training("./training/movie/7ec4b-76674.model")
+training("./training/movie/c5b1f-b82e9.model")
 
 
