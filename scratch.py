@@ -169,7 +169,7 @@ class Transformer(nn.Module):
         positional_encoding = self.positionalencoding1d(self.embeddingSize, self.maxLength).cuda()
         encoder_input = embedded+positional_encoding
 
-        encoder_padding_mask = torch.not_equal(x, 0)
+        encoder_padding_mask = torch.eq(x, 0)
         encoder_memory = self.encoder(encoder_input.transpose(0,1), src_key_padding_mask=encoder_padding_mask)
     
         # decoder_seed = 
@@ -182,11 +182,10 @@ class Transformer(nn.Module):
             decoder_input = positional_encoding + decoder_memory
 
             decoder_mask = self.generate_square_subsequent_mask(self.maxLength).cuda()
-            decoder_padding_mask = torch.not_equal(decoder_seed, 0)
+            decoder_padding_mask = torch.eq(decoder_seed, 0)
 
-            # net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask, tgt_key_padding_mask=decoder_padding_mask, memory_key_padding_mask=encoder_padding_mask).transpose(0,1) <- but this nans out
-            
-            net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask, memory_key_padding_mask=encoder_padding_mask).transpose(0,1)
+            net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask, tgt_key_padding_mask=decoder_padding_mask, memory_key_padding_mask=encoder_padding_mask).transpose(0,1)
+
         else:
             for i in range(self.maxLength):
                 positional_encoding = self.positionalencoding1d(self.embeddingSize, i+1).cuda()
@@ -320,7 +319,7 @@ def crossEntropy(logits, targets_sparse, epsilon=1e-8):
 
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = crossEntropy
-lr = 5e-4 # apparently Torch people think this is a good idea
+lr = 1e-3 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.95) # decay schedule
@@ -450,6 +449,6 @@ def inferring(url):
 
 # inferring("./training/movie/7300c-ed227.model")
 
-training("./training/movie/8ea3f-5953b.model")
+training()
 
 
