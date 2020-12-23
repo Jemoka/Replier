@@ -247,7 +247,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 32
+batch_size = 128
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -344,7 +344,8 @@ def training(retrain=None):
 
     model.train() # duh
     for epoch in range(epochs):
-        if (epoch % 3 == 0) and epoch != 0:
+         # and epoch != 0
+        if (epoch % 5 == 0):
             print(f'Taking a 10 min fridge break before starting at {epoch}...')
             for _ in tqdm(range(60*10)):
                 time.sleep(1)
