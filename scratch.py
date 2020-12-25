@@ -224,7 +224,7 @@ zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))[-2000:]
 
 dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
-tokenizer = get_tokenizer("subword")
+tokenizer = get_tokenizer("revtok")
 
 vocabulary = defaultdict(lambda: len(vocabulary))
 
@@ -247,12 +247,14 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 128
+batch_size = 132
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
 inputs_batched = np.array([i for i in chunk(dataset_x_padded, batch_size) if len(i) == batch_size]) # batchify and remove empty list
 outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if len(i) == batch_size]) # batchify and remove empty list
+
+breakpoint()
 
 
 # inputs_batched = [np.array([np.array([e[0] for e in sentence]) for sentence in batch]) for batch in batches] # list of inputs
@@ -319,10 +321,10 @@ def crossEntropy(logits, targets_sparse, epsilon=1e-8):
 
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = crossEntropy
-lr = 4e-3 # apparently Torch people think this is a good idea
+lr = 5e-3 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
-scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.99) # decay schedule
+# scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.9999) # decay schedule
 
 #### Training ####
 def training(retrain=None):
@@ -333,7 +335,7 @@ def training(retrain=None):
     epochs = 1000
     reporting = 2
 
-    version = "DEC212020_1_NODEC"
+    version = "DEC212020_1_HUGELR"
     modelID = str(uuid.uuid4())[-5:]
     initialRuntime = time.time()
 
@@ -344,6 +346,7 @@ def training(retrain=None):
 
     model.train() # duh
     for epoch in range(epochs):
+        total_loss = 0
         #
 #         if (epoch % 3 == 0) and epoch != 0:
             # print(f'Taking a 15 min fridge break before starting at {epoch}...')
@@ -371,6 +374,7 @@ def training(retrain=None):
             prediction = model(encinp_torch, decinp_torch, int(batch_size/2))
 
             loss_val = criterion(prediction, oup_torch)
+            total_loss += loss_val.item()
 
 #             target_mask = torch.not_equal(oup_torch, 0).float()
             # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
@@ -396,15 +400,17 @@ def training(retrain=None):
             for word in prediction_sentences[0]:
                 final_sent = final_sent + word + " "
 
+            loss_val_avg = total_loss/(batch+1)
+
             writer.add_scalar('Train/loss', loss_val.item(), batch+(epoch*len(inputs_batched)))
+            writer.add_scalar('Train/avgloss', loss_val_avg, batch+(epoch*len(inputs_batched)))
             writer.add_text('Train/sample', final_sent, batch+(epoch*len(inputs_batched)))
 
 
             # plot_grad_flow(model.named_parameters())
             # breakpoint()
             
-
-            batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.5f} |')
+            batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Avg Loss: {loss_val_avg:.5f} |')
         #plot_grad_flow(model.named_parameters())
 
         # CheckpointID,ModelID,ModelVersion,Dataset,Initial Runtime,Current Time,Epoch,Loss,Checkpoint Filename
@@ -412,24 +418,25 @@ def training(retrain=None):
         initialHumanTime = datetime.fromtimestamp(initialRuntime).strftime("%m/%d/%Y, %H:%M:%S")
         nowHumanTime = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
 
-        with open("./training/movie/training-log.csv", "a+") as df:
-            csvfile = csv.writer(df)
-            csvfile.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model', f'{retrain}'])
+        if epoch % 20 == 0:
+            with open("./training/movie/training-log.csv", "a+") as df:
+                csvfile = csv.writer(df)
+                csvfile.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model', f'{retrain}'])
 
-        torch.save({
-            'version': version,
-            'modelID': modelID,
-            'checkpointID': checkpointID,
-            'datasetName': dataset_name,
-            'epoch': epoch,
-            'loss': loss_val,
-            'model_state': model.state_dict(),
-            'optimizer_state': adam.state_dict(),
-            'lr': scheduler.get_last_lr()
-            }, f'./training/movie/{modelID}-{checkpointID}.model')
+            torch.save({
+                'version': version,
+                'modelID': modelID,
+                'checkpointID': checkpointID,
+                'datasetName': dataset_name,
+                'epoch': epoch,
+                'loss': loss_val,
+                'model_state': model.state_dict(),
+                'optimizer_state': adam.state_dict(),
+                'lr': lr
+                }, f'./training/movie/{modelID}-{checkpointID}.model')
 
-        print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
-        scheduler.step()
+        print(f'| EPOCH DONE | Epoch: {epoch} | Avg Loss: {loss_val_avg} |')
+        # scheduler.step()
     writer.close()
 
 def inferring(url):
