@@ -22,6 +22,7 @@ from torchtext.data.utils import get_tokenizer
 
 import matplotlib
 import matplotlib.pyplot as plt
+from  bpe import Encoder
 from matplotlib.lines import *
 
 # matplotlib.use('pdf')  # Or any other X11 back-end
@@ -219,21 +220,26 @@ dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 # # crop the dataset b/c we don't have the big bucks
 # zipped_dataset = zipped_dataset[-2000:]
 # =======
-zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))[-2000:]
+zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
-tokenizer = get_tokenizer("revtok")
+# tokenizer = get_tokenizer("revtok")
+tokenizer = Encoder(12500, pct_bpe=0.88)  # params chosen for demonstration purposes
+tokenizer.fit(dataset_x_raw+dataset_y_raw)
 
 vocabulary = defaultdict(lambda: len(vocabulary))
 
-pad = vocabulary["<pad>"]
-sos_token = vocabulary["<sos>"]
-eos_token = vocabulary["<eos>"]
+pad = vocabulary["__pad"]
+sos_token = vocabulary["__sos"]
+eos_token = vocabulary["__eos"]
+sow_token = vocabulary["__sow"]
+eow_token = vocabulary["__eow"]
 
-dataset_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_x_raw][1:]
-dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_y_raw][1:]
+
+dataset_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer.tokenize(i)]+[eos_token] for i in dataset_x_raw][1:]
+dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer.tokenize(i)]+[eos_token] for i in dataset_y_raw][1:]
 
 vocabulary_inversed = {v: k for k, v in vocabulary.items()}
 
@@ -247,14 +253,12 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 132
+batch_size = 24
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
 inputs_batched = np.array([i for i in chunk(dataset_x_padded, batch_size) if len(i) == batch_size]) # batchify and remove empty list
 outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if len(i) == batch_size]) # batchify and remove empty list
-
-breakpoint()
 
 
 # inputs_batched = [np.array([np.array([e[0] for e in sentence]) for sentence in batch]) for batch in batches] # list of inputs
@@ -284,7 +288,7 @@ sentences = ["I am a smart.", "He is very smart"];
 prediction_batch_size = len(sentences);
 
 # prediction_x_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer(i+" <eos>")] for i in sentences]
-prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
+prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer.tokenize(i)]+[eos_token] for i in sentences]
 # dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_y_raw][1:]
 
 
@@ -297,7 +301,7 @@ prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
 # model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
 
 # =======
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=512, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=256).cuda())
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=600, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=6, transformerHiddenDenseSize=512).cuda())
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 # Weight Initialization
@@ -321,10 +325,10 @@ def crossEntropy(logits, targets_sparse, epsilon=1e-8):
 
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = crossEntropy
-lr = 5e-3 # apparently Torch people think this is a good idea
+lr = 1e-2 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
-# scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.9999) # decay schedule
+scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.90) # decay schedule
 
 #### Training ####
 def training(retrain=None):
@@ -332,8 +336,10 @@ def training(retrain=None):
         checkpoint = torch.load(retrain, map_location=torch.device('cpu'))
         model.load_state_dict(checkpoint["model_state"])
 
-    epochs = 1000
+    epochs = 100000
     reporting = 2
+    accumulate = 64 
+    print(f'Effective batch size: {batch_size*accumulate}')
 
     version = "DEC212020_1_HUGELR"
     modelID = str(uuid.uuid4())[-5:]
@@ -370,7 +376,6 @@ def training(retrain=None):
 
             # decInp_torch
 
-            adam.zero_grad()
             prediction = model(encinp_torch, decinp_torch, int(batch_size/2))
 
             loss_val = criterion(prediction, oup_torch)
@@ -382,7 +387,9 @@ def training(retrain=None):
             loss_val.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
 
-            adam.step()
+            if ((batch+(epoch*len(inputs_batched)))%accumulate) == 0:
+                adam.step()
+                adam.zero_grad()
 
             prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
         
@@ -393,7 +400,7 @@ def training(retrain=None):
                     try: 
                         prediction_value.append(vocabulary_inversed[i])
                     except KeyError:
-                        prediction_value.append("<err>")
+                        prediction_value.append("__err")
                 prediction_sentences.append(prediction_value)
 
             final_sent = ""
@@ -417,8 +424,10 @@ def training(retrain=None):
 
         initialHumanTime = datetime.fromtimestamp(initialRuntime).strftime("%m/%d/%Y, %H:%M:%S")
         nowHumanTime = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
+        writer.add_scalar('Train/epochloss', loss_val_avg, (epoch*len(inputs_batched)))
 
         if epoch % 20 == 0:
+            scheduler.step()
             with open("./training/movie/training-log.csv", "a+") as df:
                 csvfile = csv.writer(df)
                 csvfile.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model', f'{retrain}'])
@@ -432,11 +441,10 @@ def training(retrain=None):
                 'loss': loss_val,
                 'model_state': model.state_dict(),
                 'optimizer_state': adam.state_dict(),
-                'lr': lr
+                'lr': scheduler.get_lr()
                 }, f'./training/movie/{modelID}-{checkpointID}.model')
 
         print(f'| EPOCH DONE | Epoch: {epoch} | Avg Loss: {loss_val_avg} |')
-        # scheduler.step()
     writer.close()
 
 def inferring(url):
