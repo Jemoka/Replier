@@ -118,7 +118,7 @@ class Transformer(nn.Module):
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
 
         self.decoderLinear = nn.Linear(embeddingSize, numberTokens)
-        self.decoderRELU = nn.ReLU6()
+        self.decoderSoftmax = nn.Softmax(dim=2)
 
 
     @staticmethod
@@ -197,7 +197,7 @@ class Transformer(nn.Module):
 
                 decoder_memory = torch.cat((seed, net), dim=1)
 
-        result = self.decoderRELU(self.decoderLinear(net))
+        result = self.decoderSoftmax(self.decoderLinear(net))
         return result
 
 # replier = Transformer()
@@ -313,19 +313,19 @@ def init_weights(m):
         m.bias.data.fill_(0)
 model.apply(init_weights)
 
-# def crossEntropy(logits, targets_sparse, epsilon=1e-8):
-    # targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
-    # target_mask = torch.not_equal(targets_sparse, 0).float()
-    # cross_entropy = torch.mean(-torch.log(torch.gather(logits+targets, 1, targets).squeeze(1)), -1)
-#     return torch.mean(target_mask*cross_entropy)
-
 def crossEntropy(logits, targets_sparse, epsilon=1e-8):
     targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
     target_mask = torch.not_equal(targets_sparse, 0).float()
+    cross_entropy = torch.mean(-torch.log(torch.gather(logits+targets, 1, targets).squeeze(1)), -1)
+    return torch.mean(target_mask*cross_entropy)
 
-    loss_vals = torch.sum(- targets * F.log_softmax(logits+epsilon, -1), -1)
+# def crossEntropy(logits, targets_sparse, epsilon=1e-8):
+    # targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
+    # target_mask = torch.not_equal(targets_sparse, 0).float()
 
-    return torch.mean(target_mask*loss_vals)
+    # loss_vals = torch.sum(- targets * F.log_softmax(logits+epsilon, -1), -1)
+
+    # return torch.mean(target_mask*loss_vals)
         
 
 # crossEntropy = torch.nn.CrossEntropyLoss(reduce=False)
@@ -335,10 +335,10 @@ def crossEntropy(logits, targets_sparse, epsilon=1e-8):
     # return torch.mean(target_mask*vals)
 
 criterion = crossEntropy
-lr = 0.006 # apparently Torch people think this is a good idea
+lr = 0.008 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
-scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[2,20], gamma=0.99) # decay schedule
+scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[2,20], gamma=0.85) # decay schedule
 
 #### Training ####
 def training(retrain=None):
@@ -348,6 +348,7 @@ def training(retrain=None):
 
     epochs = 100000
     reporting = 2
+    # accumulate = 24
     accumulate = 32
     print(f'Effective batch size: {batch_size*accumulate}')
 
@@ -388,7 +389,7 @@ def training(retrain=None):
 
             prediction = model(encinp_torch, decinp_torch, int(batch_size/2))
 
-            loss_val = criterion(prediction, oup_torch)
+            loss_val = criterion(prediction, oup_torch)/accumulate
             total_loss += loss_val.item()
 
 #             target_mask = torch.not_equal(oup_torch, 0).float()
@@ -416,6 +417,9 @@ def training(retrain=None):
             final_sent = ""
             for word in prediction_sentences[0]:
                 final_sent = final_sent + word + " "
+
+            ont = list(model.named_parameters())
+            # breakpoint()
 
             loss_val_avg = total_loss/(batch+1)
 
@@ -472,7 +476,7 @@ def inferring(url):
     prediction_sentences = [[vocabulary_inversed[i] for i in e] for e in prediction_values]
     breakpoint()
 
-training()
+training("./training/movie/45d7a-41b70.model")
 
 # training()
 
