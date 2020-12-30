@@ -118,6 +118,7 @@ class Transformer(nn.Module):
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
 
         self.outputHidden = nn.Linear(embeddingSize, linearHiddenSize);
+        self.outputHidden2 = nn.Linear(linearHiddenSize, linearHiddenSize)
         self.outputLayer = nn.Linear(linearHiddenSize, numberTokens)
         self.outputSoftmax = nn.Softmax(dim=2)
 
@@ -199,6 +200,7 @@ class Transformer(nn.Module):
                 decoder_memory = torch.cat((seed, net), dim=1)
 
         net = self.outputHidden(net)
+        net = self.outputHidden2(net)
         net = self.outputLayer(net)
         net = self.outputSoftmax(net)
 
