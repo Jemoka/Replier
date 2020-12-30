@@ -217,7 +217,7 @@ dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
 
 # # crop the dataset b/c we don't have the big bucks
-zipped_dataset = zipped_dataset[-10000:]
+zipped_dataset = zipped_dataset[-15000:]
 # =======
 # zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
@@ -307,17 +307,17 @@ model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embed
 def init_weights(m):
     if type(m) == nn.Linear:
         torch.nn.init.xavier_uniform_(m.weight.data)
-        m.bias.data.fill_(0)
+        m.bias.data.fill_(0.005)
     elif type(m) == nn.LayerNorm:
         torch.nn.init.normal_(m.weight.data)
-        m.bias.data.fill_(0)
+        m.bias.data.fill_(0.005)
 model.apply(init_weights)
 
-def crossEntropy(logits, targets_sparse, epsilon=1e-8):
-    targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
-    target_mask = torch.not_equal(targets_sparse, 0).float()
-    cross_entropy = torch.mean(-torch.log(torch.gather(logits+targets, 1, targets).squeeze(1)), -1)
-    return torch.mean(target_mask*cross_entropy)
+# def crossEntropy(logits, targets_sparse, epsilon=1e-8):
+    # targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
+    # target_mask = torch.not_equal(targets_sparse, 0).float()
+    # cross_entropy = torch.mean(-torch.log(torch.gather(logits+targets, 1, targets).squeeze(1)), -1)
+    # return torch.mean(target_mask*cross_entropy)
 
 # def crossEntropy(logits, targets_sparse, epsilon=1e-8):
     # targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
@@ -328,17 +328,24 @@ def crossEntropy(logits, targets_sparse, epsilon=1e-8):
     # return torch.mean(target_mask*loss_vals)
         
 
-# crossEntropy = torch.nn.CrossEntropyLoss(reduce=False)
-# def maskedCrossEntropy(logits, targets_sparse):
-    # vals = crossEntropy(logits.transpose(1,2), targets_sparse)
+crossEntropy = torch.nn.CrossEntropyLoss(reduce=False)
+def maskedCrossEntropy(logits, targets_sparse):
+    vals = crossEntropy(logits.transpose(1,2), targets_sparse)
+    target_mask = torch.not_equal(targets_sparse, 0).float()
+    return torch.mean(target_mask*vals)
+
+# nll = torch.nn.NLLLoss(reduce=False)
+# def maskeddNLL(logits, targets_sparse):
+    # vals = nll(logits.transpose(1,2), targets_sparse)
     # target_mask = torch.not_equal(targets_sparse, 0).float()
     # return torch.mean(target_mask*vals)
 
-criterion = crossEntropy
-lr = 0.008 # apparently Torch people think this is a good idea
+
+criterion = maskedCrossEntropy
+lr = 2e-5 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
-scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[2,20], gamma=0.85) # decay schedule
+scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[2,20], gamma=0.95) # decay schedule
 
 #### Training ####
 def training(retrain=None):
@@ -349,7 +356,7 @@ def training(retrain=None):
     epochs = 100000
     reporting = 2
     # accumulate = 24
-    accumulate = 32
+    accumulate = 8
     print(f'Effective batch size: {batch_size*accumulate}')
 
     version = "DEC212020_1_HUGELR"
@@ -398,7 +405,8 @@ def training(retrain=None):
             loss_val.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
 
-            if ((batch+(epoch*len(inputs_batched)))%accumulate) == 0 and batch!=0:
+            # plot_grad_flow(model.named_parameters())
+            if ((batch+(epoch*len(inputs_batched)))%accumulate) == 0:
                 adam.step()
                 adam.zero_grad()
 
@@ -418,10 +426,12 @@ def training(retrain=None):
             for word in prediction_sentences[0]:
                 final_sent = final_sent + word + " "
 
-            ont = list(model.named_parameters())
+            # ont = list(model.named_parameters())
             # breakpoint()
 
             loss_val_avg = total_loss/(batch+1)
+
+            # breakpoint()
 
             writer.add_scalar('Train/loss', loss_val.item(), batch+(epoch*len(inputs_batched)))
             writer.add_scalar('Train/avgloss', loss_val_avg, batch+(epoch*len(inputs_batched)))
@@ -476,7 +486,7 @@ def inferring(url):
     prediction_sentences = [[vocabulary_inversed[i] for i in e] for e in prediction_values]
     breakpoint()
 
-training("./training/movie/45d7a-41b70.model")
+training()
 
 # training()
 
