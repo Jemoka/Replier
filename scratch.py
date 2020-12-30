@@ -306,7 +306,7 @@ prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
 # model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
 
 # =======
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=600, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=512, linearHiddenSize=4096).cuda())
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=258, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=6, transformerHiddenDenseSize=512, linearHiddenSize=512).cuda())
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 # Weight Initialization
@@ -348,10 +348,10 @@ def maskedCrossEntropy(logits, targets_sparse):
 
 
 criterion = maskedCrossEntropy
-lr = 5e-4 # apparently Torch people think this is a good idea
+lr = 0.25 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
-scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[2,20], gamma=0.95) # decay schedule
+scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[2,20], gamma=0.75) # decay schedule
 
 #### Training ####
 def training(retrain=None):
@@ -412,7 +412,7 @@ def training(retrain=None):
             # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
 
             # plot_grad_flow(model.named_parameters())
-            if ((batch+(epoch*len(inputs_batched)))%accumulate) == 0:
+            if ((batch+(epoch*len(inputs_batched)))%accumulate) == 0 and batch != 0:
                 adam.step()
                 adam.zero_grad()
 
