@@ -348,7 +348,7 @@ def maskedCrossEntropy(logits, targets_sparse):
 
 
 criterion = maskedCrossEntropy
-lr = 0.25 # apparently Torch people think this is a good idea
+lr = 5 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[2,20], gamma=0.75) # decay schedule
