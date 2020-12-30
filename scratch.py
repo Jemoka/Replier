@@ -96,7 +96,7 @@ def plot_grad_flow_bars(named_parameters):
 # https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 class Transformer(nn.Module):
     # def __init__(self, numberTokens:int, embeddingSize:int, attentionHead:int, hiddenDenseSize:int, numberLayers:int):
-    def __init__(self, numberTokens, embeddingSize, maxLength, numberEncoderLayers, numberDecoderLayers, attentionHeadCount, transformerHiddenDenseSize):
+    def __init__(self, numberTokens, embeddingSize, maxLength, numberEncoderLayers, numberDecoderLayers, attentionHeadCount, transformerHiddenDenseSize, linearHiddenSize):
         # Based on https://pytorch.org/tutorials/beginner/transformer_tutorial.html
         super(Transformer, self).__init__()
         self.model_type = 'Transformer'
@@ -117,8 +117,9 @@ class Transformer(nn.Module):
 
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
 
-        self.decoderLinear = nn.Linear(embeddingSize, numberTokens)
-        self.decoderSoftmax = nn.Softmax(dim=2)
+        self.outputHidden = nn.Linear(embeddingSize, linearHiddenSize);
+        self.outputLayer = nn.Linear(linearHiddenSize, numberTokens)
+        self.outputSoftmax = nn.Softmax(dim=2)
 
 
     @staticmethod
@@ -197,8 +198,11 @@ class Transformer(nn.Module):
 
                 decoder_memory = torch.cat((seed, net), dim=1)
 
-        result = self.decoderSoftmax(self.decoderLinear(net))
-        return result
+        net = self.outputHidden(net)
+        net = self.outputLayer(net)
+        net = self.outputSoftmax(net)
+
+        return net
 
 # replier = Transformer()
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
@@ -300,7 +304,7 @@ prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
 # model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
 
 # =======
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=600, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=6, transformerHiddenDenseSize=512).cuda())
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=600, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=512, linearHiddenSize=4096).cuda())
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 # Weight Initialization
@@ -342,7 +346,7 @@ def maskedCrossEntropy(logits, targets_sparse):
 
 
 criterion = maskedCrossEntropy
-lr = 5e-5 # apparently Torch people think this is a good idea
+lr = 5e-4 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[2,20], gamma=0.95) # decay schedule
