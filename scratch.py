@@ -342,7 +342,7 @@ def maskedCrossEntropy(logits, targets_sparse):
 
 
 criterion = maskedCrossEntropy
-lr = 2e-5 # apparently Torch people think this is a good idea
+lr = 5e-5 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[2,20], gamma=0.95) # decay schedule
@@ -356,7 +356,7 @@ def training(retrain=None):
     epochs = 100000
     reporting = 2
     # accumulate = 24
-    accumulate = 8
+    accumulate = 40
     print(f'Effective batch size: {batch_size*accumulate}')
 
     version = "DEC212020_1_HUGELR"
