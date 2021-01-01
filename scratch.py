@@ -24,18 +24,21 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import *
 
+from gensim.models.keyedvectors import KeyedVectors
+
 # matplotlib.use('pdf')  # Or any other X11 back-end
 
 #### Utilities ####
 # util to tenserify them numpy arrays
 np2tens = lambda x:torch.from_numpy(x).long()
+np2float = lambda x:torch.from_numpy(x).float()
 
 # util to get rid of emojis
 def deEmojify(text):
     regrex_pattern = re.compile(pattern = "["
         u"\U0001F600-\U0001F64F"  # emoticons
         u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-        u"\U0001F680-\U0001F6FF"  # transport & map symbols
+        u"\U0001F680-\U0001F6FF"  # transport & map symbol
         u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
                            "]+", flags = re.UNICODE)
     return regrex_pattern.sub(r'',text)
@@ -91,18 +94,31 @@ def plot_grad_flow_bars(named_parameters):
                 # Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
     # plt.show()
 
+#### Embedding seed ####
+print("Loading word vectors...")
+w2v = KeyedVectors.load_word2vec_format("./googleslim.model")
+print("Vectors loaded.")
+# pad_text = "<PAD>"
+# start_text = "<SOS>"
+# end_text = "<EOS>"
+# w2v[pad_text] = np.zeros((300,))
+# w2v[start_text] = np.ones((300,))
+# w2v[end_text] = np.full((300,), 0.1)
+
 #### Network ####
 # https://pytorch.org/tutorials/beginner/transformer_tutorial.html
+print("Constructing model...")
 class Transformer(nn.Module):
     # def __init__(self, numberTokens:int, embeddingSize:int, attentionHead:int, hiddenDenseSize:int, numberLayers:int):
-    def __init__(self, numberTokens, embeddingSize, maxLength, numberEncoderLayers, numberDecoderLayers, attentionHeadCount, transformerHiddenDenseSize, linearHiddenSize):
+    def __init__(self, numberTokens, maxLength, numberEncoderLayers, numberDecoderLayers, attentionHeadCount, transformerHiddenDenseSize, linearHiddenSize):
         # Based on https://pytorch.org/tutorials/beginner/transformer_tutorial.html
         super(Transformer, self).__init__()
         self.model_type = 'Transformer'
+        embeddingSize = 300
         self.embeddingSize = embeddingSize
         self.numberTokens = numberTokens
-
-        self.encoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
+        
+        self.encoderEmbedding = nn.Embedding(numberTokens, embeddingSize).from_pretrained(np2float(w2v.vectors))
         self.maxLength = maxLength 
         
         encoderLayer = nn.TransformerEncoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
@@ -110,16 +126,11 @@ class Transformer(nn.Module):
         self.encoder = nn.TransformerEncoder(encoderLayer, numberEncoderLayers)
 
 
-        self.decoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
+        self.decoderEmbedding = nn.Embedding(numberTokens, embeddingSize).from_pretrained(np2float(w2v.vectors))
         
         decoderLayer = nn.TransformerDecoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
 
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
-
-        self.outputHidden = nn.Linear(embeddingSize, linearHiddenSize);
-        self.outputHidden2 = nn.Linear(linearHiddenSize, linearHiddenSize)
-        self.outputLayer = nn.Linear(linearHiddenSize, numberTokens)
-        self.outputSoftmax = nn.Softmax(dim=2)
 
 
     @staticmethod
@@ -198,23 +209,20 @@ class Transformer(nn.Module):
 
                 decoder_memory = torch.cat((seed, net), dim=1)
 
-        
-        net = self.outputHidden(net)
-        net = self.outputHidden2(net)
-        net = self.outputLayer(net)
-        net = self.outputSoftmax(net)
         return net
-
+print("Model constructed.")
 # replier = Transformer()
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
 
 #### Data Prep ####
+print("Establishing dataset...")
 dataset_name = "./movie_replies.csv"
 
 with open(dataset_name, "r") as dataFile:
     csvReader = csv.reader(dataFile, delimiter="±")
     dataset_raw = [i[4:] for i in csvReader]
 
+print("De-emojifying dataset...")
 dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
 dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 
@@ -224,6 +232,7 @@ dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 # # crop the dataset b/c we don't have the big bucks
 # zipped_dataset = zipped_dataset[-2000:]
 # =======
+print("Cutting dataset...")
 zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))[-15000:]
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
@@ -231,17 +240,46 @@ dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
 tokenizer = get_tokenizer("revtok")
 
-vocabulary = defaultdict(lambda: len(vocabulary))
+print("Creating vocabulary object...")
+class w2vvocab(object):
+    def __init__(self,w2v):
+        self.w2v = w2v
+        self.reverseVocab = {token: token_index for token_index, token in enumerate(w2v.index2word)} 
 
-pad = vocabulary["<pad>"]
-sos_token = vocabulary["<sos>"]
-eos_token = vocabulary["<eos>"]
+    def __getitem__(self, key):
+        try: 
+            return (self.reverseVocab[key])
+        except KeyError:
+            print("Added", key)
+            mix = np.random.uniform(size=(300,))
+            w2v[key] = mix
+            self.reverseVocab = {token: token_index for token_index, token in enumerate(w2v.index2word)} 
+            return mix
 
-dataset_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_x_raw][1:]
-dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_y_raw][1:]
+    def __len__(self):
+        return len(self.w2v.index2word)
 
-vocabulary_inversed = {v: k for k, v in vocabulary.items()}
+class w2vvocabinv(object):
+    def __init__(self,w2v):
+        self.w2v = w2v
 
+    def __getitem__(self, key):
+        return self.w2v.index2word[key]
+
+print("Instantiating vocabulary...")
+vocabulary = w2vvocab(w2v)
+
+vocabulary_inversed = w2vvocabinv(w2v)
+
+pad = vocabulary["<PAD>"]
+sos_token = vocabulary["<SOS>"]
+eos_token = vocabulary["<EOS>"]
+
+print("Compiling dataset...")
+dataset_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_x_raw)][1:]
+dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_y_raw)][1:]
+
+print("Finalizing batches...")
 max_length = max(max([len(i) for i in dataset_x_tokenized]), max([len(i) for i in dataset_y_tokenized]))+2 # +2 for safety ig
 
 if max_length % 2 != 0:
@@ -252,7 +290,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 45
+batch_size = 2
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -283,24 +321,25 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
 
 
 #### Test Sentence Prep ####
-sentences = ["I am a smart.", "He is very smart"];
-prediction_batch_size = len(sentences);
+# sentences = ["I am a smart.", "He is very smart"];
+# prediction_batch_size = len(sentences);
 
-# prediction_x_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer(i+" <eos>")] for i in sentences]
-prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
-# dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_y_raw][1:]
+# # prediction_x_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer(i+" <eos>")] for i in sentences]
+# prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
+# # dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_y_raw][1:]
 
 
-prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
+# prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
 
-prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
+# prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
 
 #### Hyperparametres ####
 # <<<<<<< HEAD
 # model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
-
+print("Data constructed.")
 # =======
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=512, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=256, linearHiddenSize=1024).cuda())
+print("Creating model...")
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=256, linearHiddenSize=256).cuda())
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 # Weight Initialization
@@ -321,11 +360,13 @@ model.apply(init_weights)
 
     # return torch.mean(target_mask*cross_entropy)
 
+print("Generating loss function...")
 crossEntropy = torch.nn.CrossEntropyLoss(reduce=False)
 def maskedCrossEntropy(logits, targets_sparse):
     vals = crossEntropy(logits.transpose(1,2), targets_sparse)
     target_mask = torch.not_equal(targets_sparse, 0).float()
     return torch.mean(target_mask*vals)
+print("Loss function done.")
 
 # nll = torch.nn.NLLLoss(reduce=False)
 # def maskeddNLL(logits, targets_sparse):
@@ -333,13 +374,16 @@ def maskedCrossEntropy(logits, targets_sparse):
     # target_mask = torch.not_equal(targets_sparse, 0).float()
     # return torch.mean(target_mask*vals)
         
-
+print("Instatiating loss function...")
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = maskedCrossEntropy
-lr = 1e-2 # apparently Torch people think this is a good idea
+lr = 1e-3 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[2,20], gamma=0.995) # decay schedule
+print("Ok, we are ready to train. On your go.")
+
+breakpoint()
 
 #### Training ####
 def training(retrain=None):
@@ -349,7 +393,7 @@ def training(retrain=None):
 
     epochs = 100000
     reporting = 2
-    accumulate = 6
+    accumulate = 64
 
     version = "DEC212020_1_NODEC"
     modelID = str(uuid.uuid4())[-5:]
@@ -381,17 +425,19 @@ def training(retrain=None):
             decinp_torch = np2tens(oup).cuda()
 
             padding_row = torch.zeros(batch_size,1)
-            oup_torch = (torch.cat((np2tens(oup)[:, 1:], padding_row), dim=1)).long().cuda()
-
+            oup_torch = (torch.cat((np2tens(oup)[:, 1:], padding_row), dim=1)).long()
+            oup_vectors = torch.Tensor([[w2v.vectors[e.item()] for e in i] for i in oup_torch]).cuda()
+            
             # decInp_torch
 
             prediction = model(encinp_torch, decinp_torch, int(batch_size/2))
 
-            loss_val = criterion(prediction, oup_torch)/accumulate
+            loss_val = torch.mean(torch.abs(prediction-oup_vectors))
 
 #             target_mask = torch.not_equal(oup_torch, 0).float()
             # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
             # loss_val = torch.mean(target_mask*loss_matrix)
+
             loss_val.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
 
@@ -403,10 +449,11 @@ def training(retrain=None):
         
             prediction_sentences = []
             for e in prediction_values:
+                breakpoint()
                 prediction_value = []
                 for i in e:
                     try: 
-                        prediction_value.append(vocabulary_inversed[i])
+                        prediction_value.append(w2v.most_similar(i))
                     except KeyError:
                         prediction_value.append("<err>")
                 prediction_sentences.append(prediction_value)
@@ -414,6 +461,8 @@ def training(retrain=None):
             final_sent = ""
             for word in prediction_sentences[0]:
                 final_sent = final_sent + word + " "
+
+            breakpoint()
 
             writer.add_scalar('Train/loss', loss_val.item(), batch+(epoch*len(inputs_batched)))
             writer.add_text('Train/sample', final_sent, batch+(epoch*len(inputs_batched)))
