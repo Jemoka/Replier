@@ -95,7 +95,7 @@ def plot_grad_flow_bars(named_parameters):
 # https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 class Transformer(nn.Module):
     # def __init__(self, numberTokens:int, embeddingSize:int, attentionHead:int, hiddenDenseSize:int, numberLayers:int):
-    def __init__(self, numberTokens, embeddingSize, maxLength, numberEncoderLayers, numberDecoderLayers, attentionHeadCount, transformerHiddenDenseSize):
+    def __init__(self, numberTokens, embeddingSize, maxLength, numberEncoderLayers, numberDecoderLayers, attentionHeadCount, transformerHiddenDenseSize, linearHiddenSize):
         # Based on https://pytorch.org/tutorials/beginner/transformer_tutorial.html
         super(Transformer, self).__init__()
         self.model_type = 'Transformer'
@@ -116,9 +116,10 @@ class Transformer(nn.Module):
 
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
 
-        self.decoderLinear = nn.Linear(embeddingSize, numberTokens)
-        self.decoderRELU = nn.LeakyReLU(0.1)
-        self.decoderSoftmax = nn.Softmax(dim=2)
+        self.outputHidden = nn.Linear(embeddingSize, linearHiddenSize);
+        self.outputHidden2 = nn.Linear(linearHiddenSize, linearHiddenSize)
+        self.outputLayer = nn.Linear(linearHiddenSize, numberTokens)
+        self.outputSoftmax = nn.Softmax(dim=2)
 
 
     @staticmethod
@@ -197,8 +198,12 @@ class Transformer(nn.Module):
 
                 decoder_memory = torch.cat((seed, net), dim=1)
 
-        result = self.decoderSoftmax(self.decoderRELU(self.decoderLinear(net)))
-        return result
+        
+        net = self.outputHidden(net)
+        net = self.outputHidden2(net)
+        net = self.outputLayer(net)
+        net = self.outputSoftmax(net)
+        return net
 
 # replier = Transformer()
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
@@ -219,12 +224,12 @@ dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 # # crop the dataset b/c we don't have the big bucks
 # zipped_dataset = zipped_dataset[-2000:]
 # =======
-zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))[-2000:]
+zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))[-15000:]
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
-tokenizer = get_tokenizer("subword")
+tokenizer = get_tokenizer("revtok")
 
 vocabulary = defaultdict(lambda: len(vocabulary))
 
@@ -247,7 +252,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 128
+batch_size = 45
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -295,7 +300,7 @@ prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
 # model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
 
 # =======
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=512, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=256).cuda())
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, embeddingSize=512, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=256, linearHiddenSize=1024).cuda())
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 # Weight Initialization
@@ -308,21 +313,33 @@ def init_weights(m):
         m.bias.data.fill_(0)
 model.apply(init_weights)
 
-def crossEntropy(logits, targets_sparse, epsilon=1e-8):
-    targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
+# def crossEntropy(logits, targets_sparse, epsilon=1e-8):
+    # targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
+    # target_mask = torch.not_equal(targets_sparse, 0).float()
+
+    # cross_entropy = torch.mean(-torch.log(torch.gather(logits+epsilon, 1, targets).squeeze(1)), -1)
+
+    # return torch.mean(target_mask*cross_entropy)
+
+crossEntropy = torch.nn.CrossEntropyLoss(reduce=False)
+def maskedCrossEntropy(logits, targets_sparse):
+    vals = crossEntropy(logits.transpose(1,2), targets_sparse)
     target_mask = torch.not_equal(targets_sparse, 0).float()
+    return torch.mean(target_mask*vals)
 
-    cross_entropy = torch.mean(-torch.log(torch.gather(logits, 1, targets).squeeze(1)), -1)
-
-    return torch.mean(target_mask*cross_entropy)
+# nll = torch.nn.NLLLoss(reduce=False)
+# def maskeddNLL(logits, targets_sparse):
+    # vals = nll(logits.transpose(1,2), targets_sparse)
+    # target_mask = torch.not_equal(targets_sparse, 0).float()
+    # return torch.mean(target_mask*vals)
         
 
 # criterion = torch.nn.CrossEntropyLoss()
-criterion = crossEntropy
-lr = 4e-3 # apparently Torch people think this is a good idea
+criterion = maskedCrossEntropy
+lr = 1e-2 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
-scheduler = torch.optim.lr_scheduler.StepLR(adam, 1.0, gamma=0.99) # decay schedule
+scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[2,20], gamma=0.995) # decay schedule
 
 #### Training ####
 def training(retrain=None):
@@ -330,8 +347,9 @@ def training(retrain=None):
         checkpoint = torch.load(retrain, map_location=torch.device('cpu'))
         model.load_state_dict(checkpoint["model_state"])
 
-    epochs = 1000
+    epochs = 100000
     reporting = 2
+    accumulate = 6
 
     version = "DEC212020_1_NODEC"
     modelID = str(uuid.uuid4())[-5:]
@@ -367,18 +385,19 @@ def training(retrain=None):
 
             # decInp_torch
 
-            adam.zero_grad()
             prediction = model(encinp_torch, decinp_torch, int(batch_size/2))
 
-            loss_val = criterion(prediction, oup_torch)
+            loss_val = criterion(prediction, oup_torch)/accumulate
 
 #             target_mask = torch.not_equal(oup_torch, 0).float()
             # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
             # loss_val = torch.mean(target_mask*loss_matrix)
             loss_val.backward()
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
 
-            adam.step()
+            if ((batch+(epoch*len(inputs_batched)))%accumulate) == 0 and batch != 0:
+                adam.step()
+                adam.zero_grad()
 
             prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
         
