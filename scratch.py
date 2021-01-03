@@ -373,7 +373,7 @@ print("Instatiating loss function...")
 criterion = maskedCrossEntropy
 initial_lr = 1/math.sqrt(300) # apparently Torch people think this is a good idea
 warmup = 4000
-lr_factor = lambda step: min(1/math.sqrt(step+1e-8), step*(warmup**-1.5)) #https://blog.tensorflow.org/2019/05/transformer-chatbot-tutorial-with-tensorflow-2.html
+lr_factor = lambda step: min(1/math.sqrt(step+1e-8), (step)*(warmup**-1.5)) #https://blog.tensorflow.org/2019/05/transformer-chatbot-tutorial-with-tensorflow-2.html
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), initial_lr, betas=(0.9, 0.98), eps=1e-9)
 scheduler = torch.optim.lr_scheduler.LambdaLR(adam, lr_factor) # decay schedule
@@ -517,6 +517,6 @@ def inferring(url):
 
 # inferring("./training/movie/7300c-ed227.model")
 
-training()
+training("./training/movie/ab31c-1b1f5.model")
 
 
