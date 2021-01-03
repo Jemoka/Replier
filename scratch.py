@@ -237,9 +237,8 @@ with open(dataset_name, "r") as dataFile:
         sent_oup = row[-1]
         input_sentences = sent_tokenize(sent_inp)
         output_sentences = sent_tokenize(sent_oup)
-        breakpoint()
         try: 
-            dataset_raw.append([input_sentences[0], output_sentences[0]])
+            dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
         except IndexError:
             continue;
 
