@@ -95,9 +95,9 @@ def plot_grad_flow_bars(named_parameters):
     # plt.show()
 
 #### Embedding seed ####
-print("Loading word vectors...")
-w2v = KeyedVectors.load_word2vec_format("./googleslim.model")
-print("Vectors loaded.")
+# print("Loading word vectors...")
+# w2v = KeyedVectors.load_word2vec_format("./googleslim.model")
+# print("Vectors loaded.")
 # pad_text = "<PAD>"
 # start_text = "<SOS>"
 # end_text = "<EOS>"
@@ -118,7 +118,7 @@ class Transformer(nn.Module):
         self.embeddingSize = embeddingSize
         self.numberTokens = numberTokens
         
-        self.encoderEmbedding = nn.Embedding(numberTokens, embeddingSize).from_pretrained(np2float(w2v.vectors))
+        self.encoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
         self.maxLength = maxLength 
         
         encoderLayer = nn.TransformerEncoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
@@ -126,12 +126,12 @@ class Transformer(nn.Module):
         self.encoder = nn.TransformerEncoder(encoderLayer, numberEncoderLayers)
 
 
-        self.decoderEmbedding = nn.Embedding(numberTokens, embeddingSize).from_pretrained(np2float(w2v.vectors))
+        self.decoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
         
         decoderLayer = nn.TransformerDecoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
 
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
-        self.decoderTanh = nn.Tanh()
+        self.decoderLinear = nn.Linear(embeddingSize, numberTokens)
 
 
     @staticmethod
@@ -216,7 +216,8 @@ class Transformer(nn.Module):
 
                 decoder_memory = torch.cat((seed, net), dim=1)
 
-        return self.decoderTanh(net)
+        return self.decoderLinear(net)
+
 print("Model constructed.")
 # replier = Transformer()
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
@@ -240,7 +241,7 @@ dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 # zipped_dataset = zipped_dataset[-2000:]
 # =======
 print("Cutting dataset...")
-zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))[-15000:]
+zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
@@ -248,35 +249,7 @@ dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 tokenizer = get_tokenizer("revtok")
 
 print("Creating vocabulary object...")
-class w2vvocab(object):
-    def __init__(self,w2v):
-        self.w2v = w2v
-        self.reverseVocab = {token: token_index for token_index, token in enumerate(w2v.index2word)} 
-
-    def __getitem__(self, key):
-        try: 
-            return (self.reverseVocab[key])
-        except KeyError:
-            print("Added", key)
-            mix = np.random.uniform(size=(300,))
-            w2v[key] = mix
-            self.reverseVocab = {token: token_index for token_index, token in enumerate(w2v.index2word)} 
-            return mix
-
-    def __len__(self):
-        return len(self.w2v.index2word)
-
-class w2vvocabinv(object):
-    def __init__(self,w2v):
-        self.w2v = w2v
-
-    def __getitem__(self, key):
-        return self.w2v.index2word[key]
-
-print("Instantiating vocabulary...")
-vocabulary = w2vvocab(w2v)
-
-vocabulary_inversed = w2vvocabinv(w2v)
+vocabulary = defaultdict(lambda: len(vocabulary))
 
 pad = vocabulary["<PAD>"]
 sos_token = vocabulary["<SOS>"]
@@ -285,6 +258,8 @@ eos_token = vocabulary["<EOS>"]
 print("Compiling dataset...")
 dataset_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_x_raw)][1:]
 dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_y_raw)][1:]
+
+vocabulary_inversed = {v: k for k, v in vocabulary.items()}
 
 print("Finalizing batches...")
 max_length = max(max([len(i) for i in dataset_x_tokenized]), max([len(i) for i in dataset_y_tokenized]))+2 # +2 for safety ig
@@ -297,7 +272,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 36
+batch_size = 16 
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -346,7 +321,7 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
 print("Data constructed.")
 # =======
 print("Creating model...")
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=6, transformerHiddenDenseSize=1024, linearHiddenSize=256).cuda())
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=6, transformerHiddenDenseSize=512, linearHiddenSize=256).cuda())
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 # Weight Initialization
@@ -384,10 +359,12 @@ print("Loss function done.")
 print("Instatiating loss function...")
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = maskedCrossEntropy
-lr = 2e-3 # apparently Torch people think this is a good idea
+initial_lr = 1/math.sqrt(300) # apparently Torch people think this is a good idea
+warmup = 4000
+lr_factor = lambda step: min(1/math.sqrt(step+1e-8), step*(warmup**-1.5)) #https://blog.tensorflow.org/2019/05/transformer-chatbot-tutorial-with-tensorflow-2.html
 # apparently Torch people think this is a good idea
-adam = optimizer.Adam(model.parameters(), lr)
-scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[2,20], gamma=0.995) # decay schedule
+adam = optimizer.Adam(model.parameters(), initial_lr, betas=(0.9, 0.98), eps=1e-9)
+scheduler = torch.optim.lr_scheduler.LambdaLR(adam, lr_factor) # decay schedule
 print("Ok, we are ready to train. On your go.")
 
 breakpoint()
@@ -400,8 +377,7 @@ def training(retrain=None):
 
     epochs = 100000
     reporting = 2
-    accumulate =  1
-    reportname=16
+    accumulate =  4
 
     version = "DEC212020_1_NODEC"
     modelID = str(uuid.uuid4())[-5:]
@@ -435,28 +411,25 @@ def training(retrain=None):
             padding_row = torch.zeros(batch_size,1)
             oup_torch = (torch.cat((np2tens(oup)[:, 1:], padding_row), dim=1)).long().cuda()
 
-            for length_selected in range(1, oup_torch.shape[1]+1, 50):
-                oup_slice = oup_torch[:, :length_selected]
-                decinp_slice = decinp_torch[:, :length_selected]
-                oup_vector = torch.Tensor([[w2v.vectors[e] for e in i] for i in oup_slice]).cuda()
 
-                prediction = model(encinp_torch, decinp_slice, length_selected, int(batch_size/2))
+            prediction = model(encinp_torch, decinp_torch, None, int(batch_size/2))
 
-                target_mask = torch.not_equal(oup_slice, 0).float()
-                # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
-                # loss_val = torch.mean(target_mask*loss_matrix)
+            target_mask = torch.not_equal(oup_torch, 0).float()
+            # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
+            # loss_val = torch.mean(target_mask*loss_matrix)
 
-                powered_value = torch.pow(prediction-oup_vector, 2)
-                loss_val = torch.mean(target_mask.unsqueeze(-1).expand_as(powered_value)*powered_value)
+            # powered_value = torch.pow(prediction-oup_vector, 2)
+            # loss_val = torch.mean(target_mask.unsqueeze(-1).expand_as(powered_value)*powered_value)
 
-                # loss_val = criterion(prediction, oup_slice)
+            loss_val = criterion(prediction, oup_torch, target_mask)
 
-    #             target_mask = torch.not_equal(oup_torch, 0).float()
-                # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
-                # loss_val = torch.mean(target_mask*loss_matrix)
+#             target_mask = torch.not_equal(oup_torch, 0).float()
+            # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
+            # loss_val = torch.mean(target_mask*loss_matrix)
 
-                loss_val.backward()
+            loss_val.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+            prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
 
             if ((batch+(epoch*len(inputs_batched)))%accumulate) == 0 and batch != 0:
                 adam.step()
@@ -464,23 +437,22 @@ def training(retrain=None):
 
             # prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
         
-            if ((batch+(epoch*len(inputs_batched)))%reportname) == 0:
-                prediction_sentences = []
-                for e in [prediction[0]]:
-                    prediction_value = []
-                    for i in e:
-                        try: 
-                            prediction_value.append(w2v.most_similar(positive=[np.array(i.detach().cpu())], topn=1)[0][0])
-                        except KeyError:
-                            prediction_value.append("<err>")
-                    prediction_sentences.append(prediction_value)
+            prediction_sentences = []
+            for e in prediction_values:
+                prediction_value = []
+                for i in e:
+                    try: 
+                        prediction_value.append(vocabulary_inversed[i])
+                    except KeyError:
+                        prediction_value.append("<err>")
+                prediction_sentences.append(prediction_value)
 
-                final_sent = ""
-                for word in prediction_sentences[0]:
-                    final_sent = final_sent + word + " "
-                writer.add_text('Train/sample', final_sent, batch+(epoch*len(inputs_batched)))
+            final_sent = ""
+            for word in prediction_sentences[0]:
+                final_sent = final_sent + word + " "
 
             writer.add_scalar('Train/loss', loss_val.item(), batch+(epoch*len(inputs_batched)))
+            writer.add_text('Train/sample', final_sent, batch+(epoch*len(inputs_batched)))
 
 
             # plot_grad_flow(model.named_parameters())
