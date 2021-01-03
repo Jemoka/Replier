@@ -405,6 +405,7 @@ def training(retrain=None):
         batch_data_feed = tqdm(enumerate(batch_data_group), total=len(inputs_batched))
 
         for batch, (inp, oup) in batch_data_feed:
+            scheduler.step()
             encinp_torch = np2tens(inp).cuda()
             decinp_torch = np2tens(oup).cuda()
 
@@ -484,7 +485,6 @@ def training(retrain=None):
             }, f'./training/movie/{modelID}-{checkpointID}.model')
 
         print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
-        scheduler.step()
     writer.close()
 
 def inferring(url):
