@@ -131,6 +131,7 @@ class Transformer(nn.Module):
         decoderLayer = nn.TransformerDecoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
 
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
+        self.decoderTanh = nn.Tanh()
 
 
     @staticmethod
@@ -170,12 +171,17 @@ class Transformer(nn.Module):
 
 
 
-    def forward(self, x, raw_seed=None, batch_size=32):
+    def forward(self, x, raw_seed=None, decoder_seq_size=None, batch_size=32):
         if raw_seed != None:
             decoder_seed = raw_seed
         else:
             decoder_seed = torch.Tensor([[1]]*batch_size).type(torch.LongTensor).cuda()
 
+        if decoder_seq_size != None:
+            decseq =  decoder_seq_size
+        else:
+            decseq = self.maxLength 
+                
         embedded = self.encoderEmbedding(x)*math.sqrt(self.embeddingSize) #why?
 
         positional_encoding = self.positionalencoding1d(self.embeddingSize, self.maxLength).cuda()
@@ -190,11 +196,12 @@ class Transformer(nn.Module):
         decoder_memory = seed
 
         if self.training:
-            positional_encoding = self.positionalencoding1d(self.embeddingSize, self.maxLength).cuda()
+            positional_encoding = self.positionalencoding1d(self.embeddingSize, decseq).cuda()
             decoder_input = positional_encoding + decoder_memory
 
-            decoder_mask = self.generate_square_subsequent_mask(self.maxLength).cuda()
+            decoder_mask = self.generate_square_subsequent_mask(decseq).cuda()
             decoder_padding_mask = torch.eq(decoder_seed, 0)
+            
 
             net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask, tgt_key_padding_mask=decoder_padding_mask, memory_key_padding_mask=encoder_padding_mask).transpose(0,1)
 
@@ -209,7 +216,7 @@ class Transformer(nn.Module):
 
                 decoder_memory = torch.cat((seed, net), dim=1)
 
-        return net
+        return self.decoderTanh(net)
 print("Model constructed.")
 # replier = Transformer()
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
@@ -290,7 +297,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 2
+batch_size = 36
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -339,7 +346,7 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
 print("Data constructed.")
 # =======
 print("Creating model...")
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=8, transformerHiddenDenseSize=256, linearHiddenSize=256).cuda())
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, numberEncoderLayers=6, numberDecoderLayers=6, attentionHeadCount=6, transformerHiddenDenseSize=1024, linearHiddenSize=256).cuda())
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 # Weight Initialization
@@ -362,7 +369,7 @@ model.apply(init_weights)
 
 print("Generating loss function...")
 crossEntropy = torch.nn.CrossEntropyLoss(reduce=False)
-def maskedCrossEntropy(logits, targets_sparse):
+def maskedCrossEntropy(logits, targets_sparse, targets_mask):
     vals = crossEntropy(logits.transpose(1,2), targets_sparse)
     target_mask = torch.not_equal(targets_sparse, 0).float()
     return torch.mean(target_mask*vals)
@@ -377,7 +384,7 @@ print("Loss function done.")
 print("Instatiating loss function...")
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = maskedCrossEntropy
-lr = 1e-3 # apparently Torch people think this is a good idea
+lr = 2e-3 # apparently Torch people think this is a good idea
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), lr)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[2,20], gamma=0.995) # decay schedule
@@ -393,7 +400,8 @@ def training(retrain=None):
 
     epochs = 100000
     reporting = 2
-    accumulate = 64
+    accumulate =  1
+    reportname=16
 
     version = "DEC212020_1_NODEC"
     modelID = str(uuid.uuid4())[-5:]
@@ -425,47 +433,54 @@ def training(retrain=None):
             decinp_torch = np2tens(oup).cuda()
 
             padding_row = torch.zeros(batch_size,1)
-            oup_torch = (torch.cat((np2tens(oup)[:, 1:], padding_row), dim=1)).long()
-            oup_vectors = torch.Tensor([[w2v.vectors[e.item()] for e in i] for i in oup_torch]).cuda()
-            
-            # decInp_torch
+            oup_torch = (torch.cat((np2tens(oup)[:, 1:], padding_row), dim=1)).long().cuda()
 
-            prediction = model(encinp_torch, decinp_torch, int(batch_size/2))
+            for length_selected in range(1, oup_torch.shape[1]+1, 50):
+                oup_slice = oup_torch[:, :length_selected]
+                decinp_slice = decinp_torch[:, :length_selected]
+                oup_vector = torch.Tensor([[w2v.vectors[e] for e in i] for i in oup_slice]).cuda()
 
-            loss_val = torch.mean(torch.abs(prediction-oup_vectors))
+                prediction = model(encinp_torch, decinp_slice, length_selected, int(batch_size/2))
 
-#             target_mask = torch.not_equal(oup_torch, 0).float()
-            # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
-            # loss_val = torch.mean(target_mask*loss_matrix)
+                target_mask = torch.not_equal(oup_slice, 0).float()
+                # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
+                # loss_val = torch.mean(target_mask*loss_matrix)
 
-            loss_val.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+                powered_value = torch.pow(prediction-oup_vector, 2)
+                loss_val = torch.mean(target_mask.unsqueeze(-1).expand_as(powered_value)*powered_value)
+
+                # loss_val = criterion(prediction, oup_slice)
+
+    #             target_mask = torch.not_equal(oup_torch, 0).float()
+                # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
+                # loss_val = torch.mean(target_mask*loss_matrix)
+
+                loss_val.backward()
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
 
             if ((batch+(epoch*len(inputs_batched)))%accumulate) == 0 and batch != 0:
                 adam.step()
                 adam.zero_grad()
 
-            prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
+            # prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
         
-            prediction_sentences = []
-            for e in prediction_values:
-                breakpoint()
-                prediction_value = []
-                for i in e:
-                    try: 
-                        prediction_value.append(w2v.most_similar(i))
-                    except KeyError:
-                        prediction_value.append("<err>")
-                prediction_sentences.append(prediction_value)
+            if ((batch+(epoch*len(inputs_batched)))%reportname) == 0:
+                prediction_sentences = []
+                for e in [prediction[0]]:
+                    prediction_value = []
+                    for i in e:
+                        try: 
+                            prediction_value.append(w2v.most_similar(positive=[np.array(i.detach().cpu())], topn=1)[0][0])
+                        except KeyError:
+                            prediction_value.append("<err>")
+                    prediction_sentences.append(prediction_value)
 
-            final_sent = ""
-            for word in prediction_sentences[0]:
-                final_sent = final_sent + word + " "
-
-            breakpoint()
+                final_sent = ""
+                for word in prediction_sentences[0]:
+                    final_sent = final_sent + word + " "
+                writer.add_text('Train/sample', final_sent, batch+(epoch*len(inputs_batched)))
 
             writer.add_scalar('Train/loss', loss_val.item(), batch+(epoch*len(inputs_batched)))
-            writer.add_text('Train/sample', final_sent, batch+(epoch*len(inputs_batched)))
 
 
             # plot_grad_flow(model.named_parameters())
@@ -508,12 +523,12 @@ def inferring(url):
                 
     with torch.no_grad():
         mask = model.generate_square_subsequent_mask(max_length)
-        start_flush = torch.Tensor([[1]*prediction_batch_size]).type(torch.LongTensor)
-        prediction = model(prediction_x_torch, start_flush, mask, prediction_batch_size)
+        # start_flush = torch.Tensor([[1]*prediction_batch_size]).type(torch.LongTensor)
+        # prediction = model(prediction_x_torch, start_flush, mask, prediction_batch_size)
 
-        prediction_values = np.array(torch.argmax(prediction,2).transpose(0,1))
+        # prediction_values = np.array(torch.argmax(prediction,2).transpose(0,1))
         
-    prediction_sentences = [[vocabulary_inversed[i] for i in e] for e in prediction_values]
+    # prediction_sentences = [[vocabulary_inversed[i] for i in e] for e in prediction_values]
     breakpoint()
 
 # inferring("./training/movie/7300c-ed227.model")
