@@ -19,6 +19,7 @@ import torch.optim as optimizer
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from torchtext.data.utils import get_tokenizer
+from nltk.tokenize import sent_tokenize
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -223,12 +224,24 @@ print("Model constructed.")
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
 
 #### Data Prep ####
-print("Establishing dataset...")
-dataset_name = "./movie_replies.csv"
+print("Chucking dataset...")
+dataset_name = "./movie_replies_long.csv"
 
 with open(dataset_name, "r") as dataFile:
     csvReader = csv.reader(dataFile, delimiter="±")
-    dataset_raw = [i[4:] for i in csvReader]
+    dataset_raw = []
+    filesize= sum(1 for line in dataFile)
+    (dataFile).seek(0)
+    for row in tqdm(csvReader, total=filesize):
+        sent_inp = row[-2]
+        sent_oup = row[-1]
+        input_sentences = sent_tokenize(sent_inp)
+        output_sentences = sent_tokenize(sent_oup)
+        breakpoint()
+        try: 
+            dataset_raw.append([input_sentences[0], output_sentences[0]])
+        except IndexError:
+            continue;
 
 print("De-emojifying dataset...")
 dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
@@ -405,7 +418,6 @@ def training(retrain=None):
         batch_data_feed = tqdm(enumerate(batch_data_group), total=len(inputs_batched))
 
         for batch, (inp, oup) in batch_data_feed:
-            scheduler.step()
             encinp_torch = np2tens(inp).cuda()
             decinp_torch = np2tens(oup).cuda()
 
@@ -435,6 +447,7 @@ def training(retrain=None):
             if ((batch+(epoch*len(inputs_batched)))%accumulate) == 0 and batch != 0:
                 adam.step()
                 adam.zero_grad()
+            scheduler.step()
 
             # prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
         
