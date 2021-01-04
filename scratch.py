@@ -315,18 +315,6 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
 
 
 #### Test Sentence Prep ####
-# sentences = ["I am a smart.", "He is very smart"];
-# prediction_batch_size = len(sentences);
-
-# # prediction_x_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer(i+" <eos>")] for i in sentences]
-# prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
-# # dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_y_raw][1:]
-
-
-# prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
-
-# prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
-
 #### Hyperparametres ####
 # <<<<<<< HEAD
 # model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
@@ -377,12 +365,13 @@ lr_factor = lambda step: min(1/math.sqrt(step+1e-8), (step)*(warmup**-1.5)) #htt
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), initial_lr, betas=(0.9, 0.98), eps=1e-9)
 scheduler = torch.optim.lr_scheduler.LambdaLR(adam, lr_factor) # decay schedule
-print("Ok, we are ready to train. On your go.")
-
-breakpoint()
 
 #### Training ####
 def training(retrain=None):
+    print("Ok, we are ready to train. On your go.")
+
+    breakpoint()
+
     if retrain is not None:
         checkpoint = torch.load(retrain, map_location=torch.device('cpu'))
         model.load_state_dict(checkpoint["model_state"])
@@ -515,8 +504,65 @@ def inferring(url):
     # prediction_sentences = [[vocabulary_inversed[i] for i in e] for e in prediction_values]
     breakpoint()
 
-# inferring("./training/movie/7300c-ed227.model")
 
-training("./training/movie/ab31c-1b1f5.model")
+def talking(url):
+    print("Initializing Talk Script...")
+    print("Building model")
+    checkpoint = torch.load(url, map_location=torch.device('cpu'))
+    model.load_state_dict(checkpoint["model_state"])
+    model.eval()
+    
+    print("Done.")
+
+
+    response = ""
+    print("Transformer: Hello there... Let's start a conversation. Press /END to end.")
+    while response != "/END":
+        message = input("[QUERY]: ")
+        sentences = [message]
+
+        # prediction_x_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer(i+" <eos>")] for i in sentences]
+        prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
+        # dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_y_raw][1:]
+
+
+        prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
+
+        prediction_x_torch = np2tens(prediction_x_padded)
+
+        with torch.no_grad():
+            prediction = model(prediction_x_torch, None, None, prediction_x_torch.shape[0])
+            prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
+            prediction_sentences = []
+            for e in prediction_values:
+                prediction_value = []
+                for i in e:
+                    try: 
+                        result = vocabulary_inversed[i]
+                        if result == "." or result == "!" or result == "?":
+                            prediction_value.append(result)
+                        elif result == "s":
+                            prediction_value.append("s")
+                        elif result == "'":
+                            prediction_value.append("'")
+                        elif result == "<EOS>":
+                            break
+                        elif result == "i":
+                            prediction_value.append("I")
+                        else:
+                            prediction_value.append(f' {result}')
+                    except KeyError:
+                        prediction_value.append("<err>")
+                prediction_sentences.append(prediction_value)
+
+            final_sents = []
+            for result_sentence in prediction_sentences:
+                final_sent = ""
+                for word in result_sentence:
+                    final_sent = final_sent + word
+                final_sents.append(final_sent)
+            print(f'Transformer: {final_sents[0]}')
+
+talking('./GobertV5/movie/4ad89-71e87.model')
 
 
