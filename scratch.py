@@ -176,7 +176,7 @@ class Transformer(nn.Module):
         if raw_seed != None:
             decoder_seed = raw_seed
         else:
-            decoder_seed = torch.Tensor([[1]]*batch_size).type(torch.LongTensor).cuda()
+            decoder_seed = torch.Tensor([[sos_token]]*batch_size).type(torch.LongTensor).cuda()
 
         if decoder_seq_size != None:
             decseq =  decoder_seq_size
@@ -203,7 +203,6 @@ class Transformer(nn.Module):
             decoder_mask = self.generate_square_subsequent_mask(decseq).cuda()
             decoder_padding_mask = torch.eq(decoder_seed, 0)
             
-
             net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask, tgt_key_padding_mask=decoder_padding_mask, memory_key_padding_mask=encoder_padding_mask).transpose(0,1)
 
         else:
@@ -361,7 +360,7 @@ print("Instatiating loss function...")
 criterion = maskedCrossEntropy
 initial_lr = 1/math.sqrt(300) # apparently Torch people think this is a good idea
 warmup = 4000
-lr_factor = lambda step: min(1/math.sqrt(step+1e-8), (step)*(warmup**-1.5)) #https://blog.tensorflow.org/2019/05/transformer-chatbot-tutorial-with-tensorflow-2.html
+lr_factor = lambda step: min(1/math.sqrt(step+400000+1e-8), (step+400000)*(warmup**-1.5)) #https://blog.tensorflow.org/2019/05/transformer-chatbot-tutorial-with-tensorflow-2.html
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), initial_lr, betas=(0.9, 0.98), eps=1e-9)
 scheduler = torch.optim.lr_scheduler.LambdaLR(adam, lr_factor) # decay schedule
@@ -369,7 +368,6 @@ scheduler = torch.optim.lr_scheduler.LambdaLR(adam, lr_factor) # decay schedule
 #### Training ####
 def training(retrain=None):
     print("Ok, we are ready to train. On your go.")
-
     breakpoint()
 
     if retrain is not None:
@@ -411,7 +409,6 @@ def training(retrain=None):
 
             padding_row = torch.zeros(batch_size,1)
             oup_torch = (torch.cat((np2tens(oup)[:, 1:], padding_row), dim=1)).long().cuda()
-
 
             prediction = model(encinp_torch, decinp_torch, None, int(batch_size/2))
 
@@ -504,26 +501,31 @@ def inferring(url):
     # prediction_sentences = [[vocabulary_inversed[i] for i in e] for e in prediction_values]
     breakpoint()
 
+print("Freezing vocabulary...")
+vocabulary = dict(vocabulary)
 
 def talking(url):
     print("Initializing Talk Script...")
     print("Building model")
-    checkpoint = torch.load(url, map_location=torch.device('cpu'))
+    checkpoint = torch.load(url)
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
     
     print("Done.")
-
-
-    response = ""
-    print("Transformer: Hello there... Let's start a conversation. Press /END to end.")
-    while response != "/END":
+    
+    message = ""
+    print("Supervisor: Hello there... Let's start a conversation. Query /END or /EXIT to end.")
+    while True:
         message = input("[QUERY]: ")
+        if message == "/END" or message == "/EXIT":
+            break
         sentences = [message]
-
-        # prediction_x_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer(i+" <eos>")] for i in sentences]
-        prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
-        # dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_y_raw][1:]
+        
+        try:
+            prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
+        except KeyError: 
+            print("Supervisor: Unfortunately we don't know a term you typed. Try again.")
+            continue
 
 
         prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
@@ -531,8 +533,15 @@ def talking(url):
         prediction_x_torch = np2tens(prediction_x_padded)
 
         with torch.no_grad():
-            prediction = model(prediction_x_torch, None, None, prediction_x_torch.shape[0])
-            prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
+            try:
+                prediction = model(prediction_x_torch, None, None, prediction_x_torch.shape[0])
+            except RuntimeError:
+                print("Supervisor: Model RuntimeError. You probably used an unknown word. Breaking")
+                continue
+            k = 10
+            topk = torch.topk(prediction,k).indices.cpu()
+            permutations = torch.randperm(k)
+            prediction_values = np.array(topk[:, :, permutations][:,:,0])
             prediction_sentences = []
             for e in prediction_values:
                 prediction_value = []
@@ -561,8 +570,9 @@ def talking(url):
                 for word in result_sentence:
                     final_sent = final_sent + word
                 final_sents.append(final_sent)
-            print(f'Transformer: {final_sents[0]}')
+            print(f'Transformer: {final_sents[0].strip()}')
 
-talking('./GobertV5/movie/4ad89-71e87.model')
+talking('./training/movie/4ad89-f6baa.model')
+# training('./training/movie/')
 
 
