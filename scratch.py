@@ -223,7 +223,7 @@ print("Model constructed.")
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
 
 #### Data Prep ####
-print("Chucking dataset...")
+print("Chucking vocabulary dataset...")
 dataset_name = "./movie_replies_long.csv"
 
 with open(dataset_name, "r") as dataFile:
@@ -241,7 +241,7 @@ with open(dataset_name, "r") as dataFile:
         except IndexError:
             continue;
 
-print("De-emojifying dataset...")
+print("De-emojifying vocabulary dataset...")
 dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
 dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 
@@ -251,7 +251,7 @@ dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 # # crop the dataset b/c we don't have the big bucks
 # zipped_dataset = zipped_dataset[-2000:]
 # =======
-print("Cutting dataset...")
+print("Cutting vocabulary dataset...")
 zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
@@ -266,10 +266,12 @@ pad = vocabulary["<PAD>"]
 sos_token = vocabulary["<SOS>"]
 eos_token = vocabulary["<EOS>"]
 
-print("Compiling dataset...")
+print("Compiling vocabulary dataset...")
 dataset_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_x_raw)][1:]
 dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_y_raw)][1:]
 
+print("Freezing vocabulary...")
+vocabulary = dict(vocabulary)
 vocabulary_inversed = {v: k for k, v in vocabulary.items()}
 
 print("Finalizing batches...")
@@ -278,12 +280,56 @@ max_length = max(max([len(i) for i in dataset_x_tokenized]), max([len(i) for i i
 if max_length % 2 != 0:
     max_length += 1
 
+print("Chucking corpus dataset...")
+dataset_name = "./counselchat_replies.csv"
+
+with open(dataset_name, "r") as dataFile:
+    csvReader = csv.reader(dataFile, delimiter="±")
+    dataset_raw = []
+    filesize= sum(1 for line in dataFile)
+    (dataFile).seek(0)
+    for row in tqdm(csvReader, total=filesize):
+        sent_inp = row[-2]
+        sent_oup = row[-1]
+        input_sentences = sent_tokenize(sent_inp)
+        output_sentences = sent_tokenize(sent_oup)
+        try: 
+            dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
+        except IndexError:
+            continue
+
+print("De-emojifying corpus dataset...")
+dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
+dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
+
+print("Cutting corpus dataset...")
+zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
+dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
+
+print("Compiling corpus dataset...")
+dataset_x_tokenized = []
+for i in tqdm(dataset_x_raw):
+    for e in tokenizer(i):
+        try:
+            dataset_x_tokenized.append([sos_token]+[vocabulary[e.lower().strip()]]+[eos_token])
+        except KeyError:
+            continue
+
+dataset_y_tokenized = []
+for i in tqdm(dataset_y_raw):
+    for e in tokenizer(i):
+        try:
+            dataset_y_tokenized.append([sos_token]+[vocabulary[e.lower().strip()]]+[eos_token])
+        except KeyError:
+            continue
+
+
 dataset_x_padded = [x+(max_length-len(x))*[0] for x in dataset_x_tokenized]
 dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 64
+batch_size = 32
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -360,7 +406,7 @@ print("Instatiating loss function...")
 criterion = maskedCrossEntropy
 initial_lr = 1/math.sqrt(300) # apparently Torch people think this is a good idea
 warmup = 4000
-lr_factor = lambda step: min(1/math.sqrt(step+400000+1e-8), (step+400000)*(warmup**-1.5)) #https://blog.tensorflow.org/2019/05/transformer-chatbot-tutorial-with-tensorflow-2.html
+lr_factor = lambda step: min(1/math.sqrt(step+1e-8), (step)*(warmup**-1.5)) #https://blog.tensorflow.org/2019/05/transformer-chatbot-tutorial-with-tensorflow-2.html
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), initial_lr, betas=(0.9, 0.98), eps=1e-9)
 scheduler = torch.optim.lr_scheduler.LambdaLR(adam, lr_factor) # decay schedule
@@ -376,9 +422,9 @@ def training(retrain=None):
 
     epochs = 100000
     reporting = 2
-    accumulate =  4
+    accumulate =  8
 
-    version = "DEC212020_1_NODEC"
+    version = "JAN062020_Conselchat0"
     modelID = str(uuid.uuid4())[-5:]
     initialRuntime = time.time()
 
@@ -419,7 +465,7 @@ def training(retrain=None):
             # powered_value = torch.pow(prediction-oup_vector, 2)
             # loss_val = torch.mean(target_mask.unsqueeze(-1).expand_as(powered_value)*powered_value)
 
-            loss_val = criterion(prediction, oup_torch, target_mask)
+            loss_val = criterion(prediction, oup_torch, target_mask)/accumulate
 
 #             target_mask = torch.not_equal(oup_torch, 0).float()
             # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
@@ -533,11 +579,11 @@ def talking(url):
         prediction_x_torch = np2tens(prediction_x_padded)
 
         with torch.no_grad():
-            try:
-                prediction = model(prediction_x_torch, None, None, prediction_x_torch.shape[0])
-            except RuntimeError:
-                print("Supervisor: Model RuntimeError. You probably used an unknown word. Breaking")
-                continue
+            # try:
+            prediction = model(prediction_x_torch, None, None, prediction_x_torch.shape[0])
+#             except RuntimeError:
+                # print("Supervisor: Model RuntimeError. You probably used an unknown word. Breaking")
+                # continue
             k = 10
             topk = torch.topk(prediction,k).indices.cpu()
             permutations = torch.randperm(k)
@@ -572,7 +618,8 @@ def talking(url):
                 final_sents.append(final_sent)
             print(f'Transformer: {final_sents[0].strip()}')
 
-talking('./training/movie/4ad89-f6baa.model')
+training('./training/movie/4ad89-28603.model')
+# talking('./training/movie/4ad89-f6baa.model')
 # training('./training/movie/')
 
 
