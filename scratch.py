@@ -287,6 +287,9 @@ if max_length % 2 != 0:
 print("Chucking corpus dataset...")
 dataset_name = "./counselchat_replies.csv"
 
+inpSet = set()
+oupSet = set()
+
 with open(dataset_name, "r") as dataFile:
     csvReader = csv.reader(dataFile, delimiter="±")
     dataset_raw = []
@@ -297,10 +300,13 @@ with open(dataset_name, "r") as dataFile:
         sent_oup = row[-1]
         input_sentences = sent_tokenize(sent_inp)
         output_sentences = sent_tokenize(sent_oup)
-        try: 
-            dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
-        except IndexError:
-            continue
+        if (input_sentences[0] not in inpSet and output_sentences[0] not in oupSet):
+            try: 
+                dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
+                inpSet.add(input_sentences[0])
+                oupSet.add(output_sentences[0])
+            except IndexError:
+                continue
 
 print("De-emojifying corpus dataset...")
 dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
@@ -408,7 +414,8 @@ print("Loss function done.")
 print("Instatiating loss function...")
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = maskedCrossEntropy
-initial_lr = 1/math.sqrt(300) # apparently Torch people think this is a good idea
+# initial_lr = 1/math.sqrt(300) # apparently Torch people think this is a good idea
+initial_lr = 1e-3 # apparently Torch people think this is a good idea
 warmup = 4000
 lr_factor = lambda step: min(1/math.sqrt(step+1e-8), (step)*(warmup**-1.5)) #https://blog.tensorflow.org/2019/05/transformer-chatbot-tutorial-with-tensorflow-2.html
 # apparently Torch people think this is a good idea
@@ -423,6 +430,7 @@ def training(retrain=None):
     if retrain is not None:
         checkpoint = torch.load(retrain, map_location=torch.device('cpu'))
         model.load_state_dict(checkpoint["model_state"])
+        adam.load_state_dict(checkpoint["optimizer_state"])
 
     epochs = 100000
     reporting = 2
@@ -621,6 +629,72 @@ def talking(url):
                     final_sent = final_sent + word
                 final_sents.append(final_sent)
             print(f'Transformer: {final_sents[0].strip()}')
+
+def conversing(url):
+    print("Initializing Talk Script...")
+    print("Building model")
+    checkpoint = torch.load(url)
+    model.load_state_dict(checkpoint["model_state"])
+    model.eval()
+    
+    print("Done.")
+    
+    for sentence in dataset_y_raw:
+        sentences = [sentence[:max_length-1]]
+        
+        try:
+            prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
+        except KeyError: 
+            # print("Supervisor: Unfortunately we don't know a term you typed. Try again.")
+            continue
+
+
+        prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
+
+        prediction_x_torch = np2tens(prediction_x_padded)
+
+        with torch.no_grad():
+            # try:
+            prediction = model(prediction_x_torch, None, None, prediction_x_torch.shape[0])
+#             except RuntimeError:
+                # print("Supervisor: Model RuntimeError. You probably used an unknown word. Breaking")
+                # continue
+            k = 1
+            topk = torch.topk(prediction,k).indices.cpu()
+            permutations = torch.randperm(k)
+            prediction_values = np.array(topk[:, :, permutations][:,:,0])
+            prediction_sentences = []
+            for e in prediction_values:
+                prediction_value = []
+                for i in e:
+                    try: 
+                        result = vocabulary_inversed[i]
+                        if result == "." or result == "!" or result == "?":
+                            prediction_value.append(result)
+                        elif result == "s":
+                            prediction_value.append("s")
+                        elif result == "'":
+                            prediction_value.append("'")
+                        elif result == "<EOS>":
+                            break
+                        elif result == "i":
+                            prediction_value.append("I")
+                        else:
+                            prediction_value.append(f' {result}')
+                    except KeyError:
+                        prediction_value.append("<err>")
+                prediction_sentences.append(prediction_value)
+
+            final_sents = []
+            for result_sentence in prediction_sentences:
+                final_sent = ""
+                for word in result_sentence:
+                    final_sent = final_sent + word
+                final_sents.append(final_sent)
+        message = final_sents[0].strip()
+        print(f'Transformer: {sentence[:max_length-1]}|{message}')
+
+
 
 training('./training/movie/4ad89-35349.model')
 # talking('./training/movie/4ad89-f6baa.model')
