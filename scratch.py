@@ -415,7 +415,7 @@ print("Instatiating loss function...")
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = maskedCrossEntropy
 # initial_lr = 1/math.sqrt(300) # apparently Torch people think this is a good idea
-initial_lr = 1e-3 # apparently Torch people think this is a good idea
+initial_lr = 1e-4 # apparently Torch people think this is a good idea
 warmup = 4000
 lr_factor = lambda step: min(1/math.sqrt(step+1e-8), (step)*(warmup**-1.5)) #https://blog.tensorflow.org/2019/05/transformer-chatbot-tutorial-with-tensorflow-2.html
 # apparently Torch people think this is a good idea
