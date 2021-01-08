@@ -146,5 +146,6 @@ scrape.py
 replierenv
 
 logs/
+training
 
 secrets.json

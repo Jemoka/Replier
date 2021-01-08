@@ -66,12 +66,12 @@ def plot_grad_flow(named_parameters):
     # plt.grid(True)
     # plt.ion()
     # plt.show()
-    
+
 def plot_grad_flow_bars(named_parameters):
     '''Plots the gradients flowing through different layers in the net during training.
     Can be used for checking for possible gradient vanishing / exploding problems.
-    
-    Usage: Plug this function in Trainer class after loss.backwards() as 
+
+    Usage: Plug this function in Trainer class after loss.backwards() as
     "plot_grad_flow(self.model.named_parameters())" to visualize the gradient flow'''
     ave_grads = []
     max_grads= []
@@ -120,17 +120,17 @@ class Transformer(nn.Module):
         embeddingSize = 300
         self.embeddingSize = embeddingSize
         self.numberTokens = numberTokens
-        
+
         self.encoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
-        self.maxLength = maxLength 
-        
+        self.maxLength = maxLength
+
         encoderLayer = nn.TransformerEncoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
 
         self.encoder = nn.TransformerEncoder(encoderLayer, numberEncoderLayers)
 
 
         self.decoderEmbedding = nn.Embedding(numberTokens, embeddingSize)
-        
+
         decoderLayer = nn.TransformerDecoderLayer(embeddingSize, attentionHeadCount, transformerHiddenDenseSize)
 
         self.decoder = nn.TransformerDecoder(decoderLayer, numberDecoderLayers)
@@ -183,8 +183,8 @@ class Transformer(nn.Module):
         if decoder_seq_size != None:
             decseq =  decoder_seq_size
         else:
-            decseq = self.maxLength 
-                
+            decseq = self.maxLength
+
         embedded = self.encoderEmbedding(x)*math.sqrt(self.embeddingSize) #why?
 
         positional_encoding = self.positionalencoding1d(self.embeddingSize, self.maxLength).cuda()
@@ -192,8 +192,8 @@ class Transformer(nn.Module):
 
         encoder_padding_mask = torch.eq(x, 0)
         encoder_memory = self.encoder(encoder_input.transpose(0,1), src_key_padding_mask=encoder_padding_mask)
-    
-        # decoder_seed = 
+
+        # decoder_seed =
         seed = self.decoderEmbedding(decoder_seed)
 
         decoder_memory = seed
@@ -204,7 +204,7 @@ class Transformer(nn.Module):
 
             decoder_mask = self.generate_square_subsequent_mask(decseq).cuda()
             decoder_padding_mask = torch.eq(decoder_seed, 0)
-            
+
             net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask, tgt_key_padding_mask=decoder_padding_mask, memory_key_padding_mask=encoder_padding_mask).transpose(0,1)
 
         else:
@@ -242,7 +242,7 @@ with open(dataset_name, "r") as dataFile:
         sent_oup = row[-1]
         input_sentences = sent_tokenize(sent_inp)
         output_sentences = sent_tokenize(sent_oup)
-        try: 
+        try:
             dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
         except IndexError:
             continue;
@@ -303,7 +303,7 @@ with open(dataset_name, "r") as dataFile:
         input_sentences = sent_tokenize(sent_inp)
         output_sentences = sent_tokenize(sent_oup)
         if (input_sentences[0] not in inpSet and output_sentences[0] not in oupSet):
-            try: 
+            try:
                 dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
                 inpSet.add(input_sentences[0])
                 oupSet.add(output_sentences[0])
@@ -412,7 +412,7 @@ print("Loss function done.")
     # vals = nll(logits.transpose(1,2), targets_sparse)
     # target_mask = torch.not_equal(targets_sparse, 0).float()
     # return torch.mean(target_mask*vals)
-        
+
 print("Instatiating loss function...")
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = maskedCrossEntropy
@@ -445,7 +445,7 @@ def training(retrain=None):
     writer = SummaryWriter(f'./training/movie/logs/{modelID}')
 
 # random.shuffle(zipped_dataset)
-    
+
 
     model.train() # duh
     for epoch in range(epochs):
@@ -495,12 +495,12 @@ def training(retrain=None):
             scheduler.step()
 
             # prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
-        
+
             prediction_sentences = []
             for e in prediction_values:
                 prediction_value = []
                 for i in e:
-                    try: 
+                    try:
                         prediction_value.append(vocabulary_inversed[i])
                     except KeyError:
                         prediction_value.append("<err>")
@@ -516,7 +516,7 @@ def training(retrain=None):
 
             # plot_grad_flow(model.named_parameters())
             # breakpoint()
-            
+
 
             batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.5f} |')
         #plot_grad_flow(model.named_parameters())
@@ -550,14 +550,14 @@ def inferring(url):
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
 
-                
+
     with torch.no_grad():
         mask = model.generate_square_subsequent_mask(max_length)
         # start_flush = torch.Tensor([[1]*prediction_batch_size]).type(torch.LongTensor)
         # prediction = model(prediction_x_torch, start_flush, mask, prediction_batch_size)
 
         # prediction_values = np.array(torch.argmax(prediction,2).transpose(0,1))
-        
+
     # prediction_sentences = [[vocabulary_inversed[i] for i in e] for e in prediction_values]
     breakpoint()
 
@@ -570,9 +570,9 @@ def talking(url):
     checkpoint = torch.load(url)
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
-    
+
     print("Done.")
-    
+
     message = ""
     print("Supervisor: Hello there... Let's start a conversation. Query /END or /EXIT to end.")
     while True:
@@ -580,10 +580,10 @@ def talking(url):
         if message == "/END" or message == "/EXIT":
             break
         sentences = [message]
-        
+
         try:
             prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
-        except KeyError: 
+        except KeyError:
             print("Supervisor: Unfortunately we don't know a term you typed. Try again.")
             continue
 
@@ -606,7 +606,7 @@ def talking(url):
             for e in prediction_values:
                 prediction_value = []
                 for i in e:
-                    try: 
+                    try:
                         result = vocabulary_inversed[i]
                         if result == "." or result == "!" or result == "?":
                             prediction_value.append(result)
@@ -638,15 +638,15 @@ def conversing(url):
     checkpoint = torch.load(url)
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
-    
+
     print("Done.")
-    
+
     for sentence in dataset_y_raw:
         sentences = [sentence[:max_length-1]]
-        
+
         try:
             prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
-        except KeyError: 
+        except KeyError:
             # print("Supervisor: Unfortunately we don't know a term you typed. Try again.")
             continue
 
@@ -669,7 +669,7 @@ def conversing(url):
             for e in prediction_values:
                 prediction_value = []
                 for i in e:
-                    try: 
+                    try:
                         result = vocabulary_inversed[i]
                         if result == "." or result == "!" or result == "?":
                             prediction_value.append(result)
@@ -713,8 +713,9 @@ def tweeting(url):
 
 tweeting("test")
 
-training('./training/movie/4ad89-35349.model')
-# talking('./training/movie/4ad89-f6baa.model')
-# training('./training/movie/')
+if __name__ == '__main__':
+    training('./training/movie/4ad89-35349.model')
+    # talking('./training/movie/4ad89-f6baa.model')
+    # training('./training/movie/')
 
 
