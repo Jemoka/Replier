@@ -305,8 +305,8 @@ with open(dataset_name, "r") as dataFile:
         if (input_sentences[0] not in inpSet and output_sentences[0] not in oupSet):
             try:
                 dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
-                inpSet.add(input_sentences[0])
-                oupSet.add(output_sentences[0])
+                inpSet.add(input_sentences[0][:max_length])
+                oupSet.add(output_sentences[0][:max_length])
             except IndexError:
                 continue
 
@@ -316,25 +316,33 @@ dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 
 print("Cutting corpus dataset...")
 zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
+dataset_length = len(zipped_dataset)
 dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
 print("Compiling corpus dataset...")
-dataset_x_tokenized = []
+dataset_x_tokenized = dataset_x_tokenized[:dataset_length*2]
+dataset_y_tokenized = dataset_y_tokenized[:dataset_length*2]
+
 for i in tqdm(dataset_x_raw):
+    sentence = [sos_token]
     for e in tokenizer(i):
         try:
-            dataset_x_tokenized.append([sos_token]+[vocabulary[e.lower().strip()]]+[eos_token])
+            sentence.append(vocabulary[e.lower().strip()])
         except KeyError:
             continue
+    sentence.append(eos_token)
+    dataset_x_tokenized.append(sentence)
 
-dataset_y_tokenized = []
+
 for i in tqdm(dataset_y_raw):
+    sentence = [sos_token]
     for e in tokenizer(i):
         try:
-            dataset_y_tokenized.append([sos_token]+[vocabulary[e.lower().strip()]]+[eos_token])
+            sentence.append(vocabulary[e.lower().strip()])
         except KeyError:
             continue
-
+    sentence.append(eos_token)
+    dataset_y_tokenized.append(sentence)
 
 dataset_x_padded = [x+(max_length-len(x))*[0] for x in dataset_x_tokenized]
 dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
@@ -416,8 +424,7 @@ print("Loss function done.")
 print("Instatiating loss function...")
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = maskedCrossEntropy
-# initial_lr = 1/math.sqrt(300) # apparently Torch people think this is a good idea
-initial_lr = 1e-4 # apparently Torch people think this is a good idea
+initial_lr = 1/math.sqrt(300) # apparently Torch people think this is a good idea
 warmup = 4000
 lr_factor = lambda step: min(1/math.sqrt(step+1e-8), (step)*(warmup**-1.5)) #https://blog.tensorflow.org/2019/05/transformer-chatbot-tutorial-with-tensorflow-2.html
 # apparently Torch people think this is a good idea
@@ -711,11 +718,11 @@ def tweeting(url):
     breakpoint()
 
 
-tweeting("test")
+# tweeting("test")
 
 if __name__ == '__main__':
+    # training('./training/movie/4ad89-35349.model')
     training('./training/movie/4ad89-35349.model')
-    # talking('./training/movie/4ad89-f6baa.model')
     # training('./training/movie/')
 
 
