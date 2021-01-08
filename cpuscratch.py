@@ -176,7 +176,7 @@ class Transformer(nn.Module):
         if raw_seed != None:
             decoder_seed = raw_seed
         else:
-            decoder_seed = torch.Tensor([[sos_token]]*batch_size).type(torch.LongTensor).cuda()
+            decoder_seed = torch.Tensor([[1]]*batch_size).type(torch.LongTensor)
 
         if decoder_seq_size != None:
             decseq =  decoder_seq_size
@@ -185,7 +185,7 @@ class Transformer(nn.Module):
                 
         embedded = self.encoderEmbedding(x)*math.sqrt(self.embeddingSize) #why?
 
-        positional_encoding = self.positionalencoding1d(self.embeddingSize, self.maxLength).cuda()
+        positional_encoding = self.positionalencoding1d(self.embeddingSize, self.maxLength)
         encoder_input = embedded+positional_encoding
 
         encoder_padding_mask = torch.eq(x, 0)
@@ -197,20 +197,21 @@ class Transformer(nn.Module):
         decoder_memory = seed
 
         if self.training:
-            positional_encoding = self.positionalencoding1d(self.embeddingSize, decseq).cuda()
+            positional_encoding = self.positionalencoding1d(self.embeddingSize, decseq)
             decoder_input = positional_encoding + decoder_memory
 
-            decoder_mask = self.generate_square_subsequent_mask(decseq).cuda()
+            decoder_mask = self.generate_square_subsequent_mask(decseq)
             decoder_padding_mask = torch.eq(decoder_seed, 0)
             
+
             net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask, tgt_key_padding_mask=decoder_padding_mask, memory_key_padding_mask=encoder_padding_mask).transpose(0,1)
 
         else:
             for i in range(self.maxLength):
-                positional_encoding = self.positionalencoding1d(self.embeddingSize, i+1).cuda()
+                positional_encoding = self.positionalencoding1d(self.embeddingSize, i+1)
                 decoder_input = positional_encoding + decoder_memory
 
-                decoder_mask = self.generate_square_subsequent_mask(i+1).cuda()
+                decoder_mask = self.generate_square_subsequent_mask(i+1)
                 decoder_padding_mask = torch.eq(decoder_input,0)
 
                 net = self.decoder(decoder_input.transpose(0,1), encoder_memory, tgt_mask=decoder_mask, memory_key_padding_mask=encoder_padding_mask).transpose(0,1)
@@ -222,14 +223,15 @@ class Transformer(nn.Module):
 
         return self.decoderLinear(net)
 
+
 print("Model constructed.")
 # replier = Transformer()
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
 
 #### Data Prep ####
-print("Chucking vocabulary dataset...")
+print("Establishing dataset...")
 dataset_name = "./movie_replies_long.csv"
-
+    
 with open(dataset_name, "r") as dataFile:
     csvReader = csv.reader(dataFile, delimiter="±")
     dataset_raw = []
@@ -245,7 +247,7 @@ with open(dataset_name, "r") as dataFile:
         except IndexError:
             continue;
 
-print("De-emojifying vocabulary dataset...")
+print("De-emojifying dataset...")
 dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
 dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 
@@ -255,7 +257,7 @@ dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 # # crop the dataset b/c we don't have the big bucks
 # zipped_dataset = zipped_dataset[-2000:]
 # =======
-print("Cutting vocabulary dataset...")
+print("Cutting dataset...")
 zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
@@ -270,12 +272,10 @@ pad = vocabulary["<PAD>"]
 sos_token = vocabulary["<SOS>"]
 eos_token = vocabulary["<EOS>"]
 
-print("Compiling vocabulary dataset...")
+print("Compiling dataset...")
 dataset_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_x_raw)][1:]
 dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_y_raw)][1:]
 
-print("Freezing vocabulary...")
-vocabulary = dict(vocabulary)
 vocabulary_inversed = {v: k for k, v in vocabulary.items()}
 
 print("Finalizing batches...")
@@ -284,56 +284,12 @@ max_length = max(max([len(i) for i in dataset_x_tokenized]), max([len(i) for i i
 if max_length % 2 != 0:
     max_length += 1
 
-print("Chucking corpus dataset...")
-dataset_name = "./counselchat_replies.csv"
-
-with open(dataset_name, "r") as dataFile:
-    csvReader = csv.reader(dataFile, delimiter="±")
-    dataset_raw = []
-    filesize= sum(1 for line in dataFile)
-    (dataFile).seek(0)
-    for row in tqdm(csvReader, total=filesize):
-        sent_inp = row[-2]
-        sent_oup = row[-1]
-        input_sentences = sent_tokenize(sent_inp)
-        output_sentences = sent_tokenize(sent_oup)
-        try: 
-            dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
-        except IndexError:
-            continue
-
-print("De-emojifying corpus dataset...")
-dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
-dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
-
-print("Cutting corpus dataset...")
-zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
-dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
-
-print("Compiling corpus dataset...")
-dataset_x_tokenized = []
-for i in tqdm(dataset_x_raw):
-    for e in tokenizer(i):
-        try:
-            dataset_x_tokenized.append([sos_token]+[vocabulary[e.lower().strip()]]+[eos_token])
-        except KeyError:
-            continue
-
-dataset_y_tokenized = []
-for i in tqdm(dataset_y_raw):
-    for e in tokenizer(i):
-        try:
-            dataset_y_tokenized.append([sos_token]+[vocabulary[e.lower().strip()]]+[eos_token])
-        except KeyError:
-            continue
-
-
 dataset_x_padded = [x+(max_length-len(x))*[0] for x in dataset_x_tokenized]
 dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 32
+batch_size = 16 
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -364,13 +320,26 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
 
 
 #### Test Sentence Prep ####
+# sentences = ["I am a smart.", "He is very smart"];
+# prediction_batch_size = len(sentences);
+
+# # prediction_x_tokenized = [[vocabulary[e.lower().strip()] for e in tokenizer(i+" <eos>")] for i in sentences]
+# prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
+# # dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in dataset_y_raw][1:]
+
+
+# prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
+
+# prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
+
 #### Hyperparametres ####
 # <<<<<<< HEAD
 # model = Transformer(4081, maxLength=max_length, embeddingSize=128, numberEncoderLayers=4, numberDecoderLayers=4, attentionHeadCount=8, transformerHiddenDenseSize=256)
 print("Data constructed.")
 # =======
 print("Creating model...")
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=6, transformerHiddenDenseSize=512, linearHiddenSize=256).cuda())
+# model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=6, transformerHiddenDenseSize=512, linearHiddenSize=256))
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=6, transformerHiddenDenseSize=512, linearHiddenSize=256))
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 # Weight Initialization
@@ -410,15 +379,16 @@ print("Instatiating loss function...")
 criterion = maskedCrossEntropy
 initial_lr = 1/math.sqrt(300) # apparently Torch people think this is a good idea
 warmup = 4000
-lr_factor = lambda step: min(1/math.sqrt(step+1e-8), (step)*(warmup**-1.5)) #https://blog.tensorflow.org/2019/05/transformer-chatbot-tutorial-with-tensorflow-2.html
+lr_factor = lambda step: min(1/math.sqrt(step+1e-8), step*(warmup**-1.5)) #https://blog.tensorflow.org/2019/05/transformer-chatbot-tutorial-with-tensorflow-2.html
 # apparently Torch people think this is a good idea
 adam = optimizer.Adam(model.parameters(), initial_lr, betas=(0.9, 0.98), eps=1e-9)
 scheduler = torch.optim.lr_scheduler.LambdaLR(adam, lr_factor) # decay schedule
-
 #### Training ####
 def training(retrain=None):
     print("Ok, we are ready to train. On your go.")
+
     breakpoint()
+
 
     if retrain is not None:
         checkpoint = torch.load(retrain, map_location=torch.device('cpu'))
@@ -426,9 +396,9 @@ def training(retrain=None):
 
     epochs = 100000
     reporting = 2
-    accumulate =  8
+    accumulate =  4
 
-    version = "JAN062020_Conselchat0"
+    version = "DEC212020_1_NODEC"
     modelID = str(uuid.uuid4())[-5:]
     initialRuntime = time.time()
 
@@ -454,13 +424,14 @@ def training(retrain=None):
         batch_data_feed = tqdm(enumerate(batch_data_group), total=len(inputs_batched))
 
         for batch, (inp, oup) in batch_data_feed:
-            encinp_torch = np2tens(inp).cuda()
-            decinp_torch = np2tens(oup).cuda()
+            encinp_torch = np2tens(inp)
+            decinp_torch = np2tens(oup)
 
             padding_row = torch.zeros(batch_size,1)
-            oup_torch = (torch.cat((np2tens(oup)[:, 1:], padding_row), dim=1)).long().cuda()
+            oup_torch = (torch.cat((np2tens(oup)[:, 1:], padding_row), dim=1)).long()
 
-            prediction = model(encinp_torch, decinp_torch, None, int(batch_size/2))
+
+            prediction = model(encinp_torch, decinp_torch, None, int(batch_size))
 
             target_mask = torch.not_equal(oup_torch, 0).float()
             # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
@@ -469,7 +440,7 @@ def training(retrain=None):
             # powered_value = torch.pow(prediction-oup_vector, 2)
             # loss_val = torch.mean(target_mask.unsqueeze(-1).expand_as(powered_value)*powered_value)
 
-            loss_val = criterion(prediction, oup_torch, target_mask)/accumulate
+            loss_val = criterion(prediction, oup_torch, target_mask)
 
 #             target_mask = torch.not_equal(oup_torch, 0).float()
             # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
@@ -482,7 +453,6 @@ def training(retrain=None):
             if ((batch+(epoch*len(inputs_batched)))%accumulate) == 0 and batch != 0:
                 adam.step()
                 adam.zero_grad()
-            scheduler.step()
 
             # prediction_values = np.array(torch.argmax(prediction,2).cpu())[:1]
         
@@ -502,11 +472,6 @@ def training(retrain=None):
 
             writer.add_scalar('Train/loss', loss_val.item(), batch+(epoch*len(inputs_batched)))
             writer.add_text('Train/sample', final_sent, batch+(epoch*len(inputs_batched)))
-
-
-            # plot_grad_flow(model.named_parameters())
-            # breakpoint()
-            
 
             batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.5f} |')
         #plot_grad_flow(model.named_parameters())
@@ -533,6 +498,7 @@ def training(retrain=None):
             }, f'./training/movie/{modelID}-{checkpointID}.model')
 
         print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
+        scheduler.step()
     writer.close()
 
 def inferring(url):
@@ -549,15 +515,18 @@ def inferring(url):
         # prediction_values = np.array(torch.argmax(prediction,2).transpose(0,1))
         
     # prediction_sentences = [[vocabulary_inversed[i] for i in e] for e in prediction_values]
-    breakpoint()
+
+# inferring("./training/movie/7300c-ed227.model")
+
 
 print("Freezing vocabulary...")
 vocabulary = dict(vocabulary)
 
+
 def talking(url):
     print("Initializing Talk Script...")
     print("Building model")
-    checkpoint = torch.load(url)
+    checkpoint = torch.load(url, map_location=torch.device("cpu"))
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
     
@@ -583,11 +552,11 @@ def talking(url):
         prediction_x_torch = np2tens(prediction_x_padded)
 
         with torch.no_grad():
-            # try:
-            prediction = model(prediction_x_torch, None, None, prediction_x_torch.shape[0])
-#             except RuntimeError:
-                # print("Supervisor: Model RuntimeError. You probably used an unknown word. Breaking")
-                # continue
+            try:
+                prediction = model(prediction_x_torch, None, None, prediction_x_torch.shape[0])
+            except RuntimeError:
+                print("Supervisor: Model RuntimeError. You probably used an unknown word. Breaking")
+                continue
             k = 1
             topk = torch.topk(prediction,k).indices.cpu()
             permutations = torch.randperm(k)
@@ -607,7 +576,7 @@ def talking(url):
                         elif result == "<EOS>":
                             break
                         elif result == "i":
-                            prediction_value.append("I")
+                            prediction_value.append(" I")
                         else:
                             prediction_value.append(f' {result}')
                     except KeyError:
@@ -622,8 +591,7 @@ def talking(url):
                 final_sents.append(final_sent)
             print(f'Transformer: {final_sents[0].strip()}')
 
-training('./training/movie/4ad89-35349.model')
-# talking('./training/movie/4ad89-f6baa.model')
-# training('./training/movie/')
+
+talking('./GobertV5/movie/4ad89-35349.model')
 
 
