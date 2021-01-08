@@ -325,7 +325,7 @@ dataset_y_tokenized = dataset_y_tokenized[:dataset_length]
 
 for i in tqdm(dataset_x_raw):
     sentence = [sos_token]
-    for e in tokenizer(i)[:max_length-1]:
+    for e in tokenizer(i)[:max_length-2]:
         try:
             sentence.append(vocabulary[e.lower().strip()])
         except KeyError:
@@ -336,7 +336,7 @@ for i in tqdm(dataset_x_raw):
 
 for i in tqdm(dataset_y_raw):
     sentence = [sos_token]
-    for e in tokenizer(i)[:max_length-1]:
+    for e in tokenizer(i)[:max_length-2]:
         try:
             sentence.append(vocabulary[e.lower().strip()])
         except KeyError:
