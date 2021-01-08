@@ -5,6 +5,8 @@ import csv
 import time
 import uuid
 import math
+import json
+import tweepy
 import random
 import numpy as np
 from datetime import datetime
@@ -28,11 +30,11 @@ from matplotlib.lines import *
 from gensim.models.keyedvectors import KeyedVectors
 
 # matplotlib.use('pdf')  # Or any other X11 back-end
-
 #### Utilities ####
 # util to tenserify them numpy arrays
 np2tens = lambda x:torch.from_numpy(x).long()
 np2float = lambda x:torch.from_numpy(x).float()
+
 
 # util to get rid of emojis
 def deEmojify(text):
@@ -695,6 +697,21 @@ def conversing(url):
         print(f'Transformer: {sentence[:max_length-1]}|{message}')
 
 
+def tweeting(url):
+    with open("./secrets.json") as df:
+        secrets = json.loads(df.read())
+
+    auth = tweepy.OAuthHandler(secrets["consumer_key"], secrets["consumer_secret"])
+    auth.set_access_token(secrets["access_token"], secrets["access_token_secret"])
+
+    api = tweepy.API(auth)
+
+    public_tweets = api.mentions_timeline()
+
+    breakpoint()
+
+
+tweeting("test")
 
 training('./training/movie/4ad89-35349.model')
 # talking('./training/movie/4ad89-f6baa.model')
