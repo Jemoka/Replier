@@ -305,8 +305,8 @@ with open(dataset_name, "r") as dataFile:
         if (input_sentences[0] not in inpSet and output_sentences[0] not in oupSet):
             try:
                 dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
-                inpSet.add(input_sentences[0][:max_length])
-                oupSet.add(output_sentences[0][:max_length])
+                inpSet.add(input_sentences[0])
+                oupSet.add(output_sentences[0])
             except IndexError:
                 continue
 
@@ -320,12 +320,12 @@ dataset_length = len(zipped_dataset)
 dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
 print("Compiling corpus dataset...")
-dataset_x_tokenized = dataset_x_tokenized[:dataset_length*2]
-dataset_y_tokenized = dataset_y_tokenized[:dataset_length*2]
+dataset_x_tokenized = dataset_x_tokenized[:dataset_length]
+dataset_y_tokenized = dataset_y_tokenized[:dataset_length]
 
 for i in tqdm(dataset_x_raw):
     sentence = [sos_token]
-    for e in tokenizer(i):
+    for e in tokenizer(i)[:max_length-1]:
         try:
             sentence.append(vocabulary[e.lower().strip()])
         except KeyError:
@@ -336,7 +336,7 @@ for i in tqdm(dataset_x_raw):
 
 for i in tqdm(dataset_y_raw):
     sentence = [sos_token]
-    for e in tokenizer(i):
+    for e in tokenizer(i)[:max_length-1]:
         try:
             sentence.append(vocabulary[e.lower().strip()])
         except KeyError:
