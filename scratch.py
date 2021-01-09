@@ -678,16 +678,16 @@ def conversing(url):
                 for i in e:
                     try:
                         result = vocabulary_inversed[i]
-                        if result == "." or result == "!" or result == "?":
+                        if result == "." or result == "!" or result == "?" or result == ",":
                             prediction_value.append(result)
-                        elif result == "s":
-                            prediction_value.append("s")
+                        elif result == "s" or result == "d" or result == "re" or result == "m":
+                            prediction_value.append(result)
                         elif result == "'":
                             prediction_value.append("'")
                         elif result == "<EOS>":
                             break
                         elif result == "i":
-                            prediction_value.append("I")
+                            prediction_value.append(" I")
                         else:
                             prediction_value.append(f' {result}')
                     except KeyError:
@@ -722,7 +722,7 @@ def tweeting(url):
 
 if __name__ == '__main__':
     # training('./training/movie/4ad89-35349.model')
-    training('./training/movie/4ad89-35349.model')
+    talking('./training/movie/4ad89-35349.model')
     # training('./training/movie/')
 
 
