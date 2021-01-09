@@ -615,10 +615,10 @@ def talking(url):
                 for i in e:
                     try:
                         result = vocabulary_inversed[i]
-                        if result == "." or result == "!" or result == "?":
+                        if result == "." or result == "!" or result == "?" or result == ",":
                             prediction_value.append(result)
-                        elif result == "s":
-                            prediction_value.append("s")
+                        elif result == "s" or result == "d" or result == "re" or result == "m":
+                            prediction_value.append(result)
                         elif result == "'":
                             prediction_value.append("'")
                         elif result == "<EOS>":
