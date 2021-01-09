@@ -591,7 +591,41 @@ def talking(url):
                 final_sents.append(final_sent)
             print(f'Transformer: {final_sents[0].strip()}')
 
+def export(url, path):
+    print("Initializing Talk Script...")
+    print("Building model")
+    checkpoint = torch.load(url, map_location=torch.device("cpu"))
+    model.load_state_dict(checkpoint["model_state"])
+    model.eval()
+    
+    print("Done.")
+    message = ""
+    valid = False
+    while not valid:
+        message = input("[DUMMY QUERY]: ")
+        if message == "/END" or message == "/EXIT":
+            break
+        sentences = [message]
+        
+        try:
+            prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
+        except KeyError: 
+            print("Supervisor: Unfortunately we don't know a term you typed. Try again.")
+            continue
 
-talking('./GobertV5/movie/4ad89-35349.model')
+
+        prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
+
+        prediction_x_torch = np2tens(prediction_x_padded)
+
+        print("Freezing Model...")
+        torch.onnx.export(model.module, prediction_x_torch, path)
+        valid = True
+
+
+
+
+# export('./training/movie/PsychCheckpoint0.model', "./training/movie/PsychCheckpoint0.onnx")
+talking("./training/movie/PsychTraining2.model")
 
 
