@@ -678,7 +678,7 @@ def conversing(url):
                 for i in e:
                     try:
                         result = vocabulary_inversed[i]
-                        if result == "." or result == "!" or result == "?":
+                        if result == "." or result == "!" or result == "?" or result == ",":
                             prediction_value.append(result)
                         elif result == "s":
                             prediction_value.append("s")

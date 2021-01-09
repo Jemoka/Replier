@@ -567,7 +567,7 @@ def talking(url):
                 for i in e:
                     try: 
                         result = vocabulary_inversed[i]
-                        if result == "." or result == "!" or result == "?":
+                        if result == "." or result == "!" or result == "?" or result == ",":
                             prediction_value.append(result)
                         elif result == "s":
                             prediction_value.append("s")
@@ -592,6 +592,6 @@ def talking(url):
             print(f'Transformer: {final_sents[0].strip()}')
 
 
-talking('./GobertV5/movie/4ad89-35349.model')
+talking('./training/movie/PsychCheckpoint0.model')
 
 
