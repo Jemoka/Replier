@@ -348,7 +348,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 32
+batch_size = 40
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -524,7 +524,8 @@ def training(retrain=None):
             # breakpoint()
 
 
-            batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.5f} |')
+            # batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.5f} |')
+            batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Loss: {loss_val:.5f} |')
         #plot_grad_flow(model.named_parameters())
 
         # CheckpointID,ModelID,ModelVersion,Dataset,Initial Runtime,Current Time,Epoch,Loss,Checkpoint Filename
@@ -536,19 +537,21 @@ def training(retrain=None):
             csvfile = csv.writer(df)
             csvfile.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model', f'{retrain}'])
 
-        torch.save({
-            'version': version,
-            'modelID': modelID,
-            'checkpointID': checkpointID,
-            'datasetName': dataset_name,
-            'epoch': epoch,
-            'loss': loss_val,
-            'model_state': model.state_dict(),
-            'optimizer_state': adam.state_dict(),
-            'lr': scheduler.get_last_lr()
-            }, f'./training/movie/{modelID}-{checkpointID}.model')
+        if epoch % 20 == 0:
+            torch.save({
+                'version': version,
+                'modelID': modelID,
+                'checkpointID': checkpointID,
+                'datasetName': dataset_name,
+                'epoch': epoch,
+                'loss': loss_val,
+                'model_state': model.state_dict(),
+                'optimizer_state': adam.state_dict(),
+                'lr': scheduler.get_last_lr()
+                }, f'./training/movie/{modelID}-{checkpointID}.model')
+            print(f'>>>>>>>>>>>>>>>>>>\nMODEL {modelID}-{checkpointID}.model SAVED\n>>>>>>>>>>>>>>>>>>')
 
-        print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
+        # print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
     writer.close()
 
 def inferring(url):
@@ -721,7 +724,8 @@ def tweeting(url):
 
 if __name__ == '__main__':
     # training('./training/movie/4ad89-35349.model')
-    talking('./training/movie/4ad89-35349.model')
+    training('./training/movie/e14e1-48205.model')
+    # talking('./training/movie/4ad89-35349.model')
     # training('./training/movie/')
 
 
