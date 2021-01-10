@@ -35,7 +35,6 @@ from gensim.models.keyedvectors import KeyedVectors
 np2tens = lambda x:torch.from_numpy(x).long()
 np2float = lambda x:torch.from_numpy(x).float()
 
-
 # util to get rid of emojis
 def deEmojify(text):
     regrex_pattern = re.compile(pattern = "["
@@ -679,11 +678,8 @@ def conversing(url):
                     try:
                         result = vocabulary_inversed[i]
                         if result == "." or result == "!" or result == "?" or result == ",":
-<<<<<<< HEAD
                             prediction_value.append(result)
                         elif result == "s" or result == "d" or result == "re" or result == "m":
-=======
->>>>>>> 1f3ecba84c59f049aa4df0f538c1e2f78a76632e
                             prediction_value.append(result)
                         elif result == "'":
                             prediction_value.append("'")
