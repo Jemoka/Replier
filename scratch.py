@@ -9,6 +9,8 @@ import json
 import tweepy
 import random
 import numpy as np
+from glob import glob
+from os.path import getctime
 from datetime import datetime
 
 from tqdm import tqdm
@@ -573,7 +575,10 @@ def inferring(url):
 print("Freezing vocabulary...")
 vocabulary = dict(vocabulary)
 
-def talking(url):
+def talking(url=None):
+    if url is None:
+        url = max(glob('./training/movie/*.model'), key=getctime)
+        print(f'>>>>>>>>>>>>>>>>>> using model snapshot at {url}')
     print("Initializing Talk Script...")
     print("Building model")
     checkpoint = torch.load(url)
@@ -641,91 +646,14 @@ def talking(url):
                 final_sents.append(final_sent)
             print(f'Transformer: {final_sents[0].strip()}')
 
-def conversing(url):
-    print("Initializing Talk Script...")
-    print("Building model")
-    checkpoint = torch.load(url)
-    model.load_state_dict(checkpoint["model_state"])
-    model.eval()
-
-    print("Done.")
-
-    for sentence in dataset_y_raw:
-        sentences = [sentence[:max_length-1]]
-
-        try:
-            prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
-        except KeyError:
-            # print("Supervisor: Unfortunately we don't know a term you typed. Try again.")
-            continue
-
-
-        prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
-
-        prediction_x_torch = np2tens(prediction_x_padded)
-
-        with torch.no_grad():
-            # try:
-            prediction = model(prediction_x_torch, None, None, prediction_x_torch.shape[0])
-#             except RuntimeError:
-                # print("Supervisor: Model RuntimeError. You probably used an unknown word. Breaking")
-                # continue
-            k = 1
-            topk = torch.topk(prediction,k).indices.cpu()
-            permutations = torch.randperm(k)
-            prediction_values = np.array(topk[:, :, permutations][:,:,0])
-            prediction_sentences = []
-            for e in prediction_values:
-                prediction_value = []
-                for i in e:
-                    try:
-                        result = vocabulary_inversed[i]
-                        if result == "." or result == "!" or result == "?" or result == ",":
-                            prediction_value.append(result)
-                        elif result == "s" or result == "d" or result == "re" or result == "m":
-                            prediction_value.append(result)
-                        elif result == "'":
-                            prediction_value.append("'")
-                        elif result == "<EOS>":
-                            break
-                        elif result == "i":
-                            prediction_value.append(" I")
-                        else:
-                            prediction_value.append(f' {result}')
-                    except KeyError:
-                        prediction_value.append("<err>")
-                prediction_sentences.append(prediction_value)
-
-            final_sents = []
-            for result_sentence in prediction_sentences:
-                final_sent = ""
-                for word in result_sentence:
-                    final_sent = final_sent + word
-                final_sents.append(final_sent)
-        message = final_sents[0].strip()
-        print(f'Transformer: {sentence[:max_length-1]}|{message}')
-
-
-def tweeting(url):
-    with open("./secrets.json") as df:
-        secrets = json.loads(df.read())
-
-    auth = tweepy.OAuthHandler(secrets["consumer_key"], secrets["consumer_secret"])
-    auth.set_access_token(secrets["access_token"], secrets["access_token_secret"])
-
-    api = tweepy.API(auth)
-
-    public_tweets = api.mentions_timeline()
-
-    breakpoint()
-
 
 # tweeting("test")
 
 if __name__ == '__main__':
     # training('./training/movie/4ad89-35349.model')
-    training('./training/movie/e14e1-48205.model')
-    # talking('./training/movie/4ad89-35349.model')
+    # training('./training/movie/e14e1-48205.model')
+    talking('./training/movie/e14e1-ea565.model') # movie dataset 
+    # talking('./training/movie/0a68e-e0597.model') # conselchat dataset 
     # training('./training/movie/')
 
 
