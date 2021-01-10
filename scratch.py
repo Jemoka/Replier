@@ -243,10 +243,14 @@ with open(dataset_name, "r") as dataFile:
         sent_oup = row[-1]
         input_sentences = sent_tokenize(sent_inp)
         output_sentences = sent_tokenize(sent_oup)
-        try:
-            dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
-        except IndexError:
-            continue;
+        while len(input_sentences) > 0 and len(output_sentences) > 0:
+            try:
+                dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
+            except IndexError:
+                continue;
+
+            del input_sentences[0];
+            del output_sentences[0];
 
 print("De-emojifying vocabulary dataset...")
 dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
@@ -304,16 +308,21 @@ with open(dataset_name, "r") as dataFile:
         input_sentences = sent_tokenize(sent_inp)
         output_sentences = sent_tokenize(sent_oup)
         if (input_sentences[0] not in inpSet and output_sentences[0] not in oupSet):
-            try:
-                dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
-                inpSet.add(input_sentences[0])
-                oupSet.add(output_sentences[0])
-            except IndexError:
-                continue
+            input_sentences = sent_tokenize(sent_inp)
+            output_sentences = sent_tokenize(sent_oup)
+            while len(input_sentences) > 0 and len(output_sentences) > 0:
+                try:
+                    dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
+                except IndexError:
+                    continue;
+
+                del input_sentences[0];
+                del output_sentences[0];
 
 print("De-emojifying corpus dataset...")
 dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
 dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
+
 
 print("Cutting corpus dataset...")
 zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
@@ -321,8 +330,8 @@ dataset_length = len(zipped_dataset)
 dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
 print("Compiling corpus dataset...")
-dataset_x_tokenized = dataset_x_tokenized[:dataset_length]
-dataset_y_tokenized = dataset_y_tokenized[:dataset_length]
+# dataset_x_tokenized = dataset_x_tokenized[:dataset_length]
+# dataset_y_tokenized = dataset_y_tokenized[:dataset_length]
 
 for i in tqdm(dataset_x_raw):
     sentence = [sos_token]
@@ -350,7 +359,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 40
+batch_size = 32
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -446,7 +455,7 @@ def training(retrain=None):
     reporting = 2
     accumulate =  8
 
-    version = "JAN062020_Conselchat0"
+    version = "JAN102020_Mixed"
     modelID = str(uuid.uuid4())[-5:]
     initialRuntime = time.time()
 
@@ -624,7 +633,7 @@ def talking(url=None):
                         result = vocabulary_inversed[i]
                         if result == "." or result == "!" or result == "?" or result == ",":
                             prediction_value.append(result)
-                        elif result == "s" or result == "d" or result == "re" or result == "m":
+                        elif result == "s" or result == "d" or result == "re" or result == "m" or result == "ll" or result == "t":
                             prediction_value.append(result)
                         elif result == "'":
                             prediction_value.append("'")
@@ -650,10 +659,11 @@ def talking(url=None):
 # tweeting("test")
 
 if __name__ == '__main__':
-    # training('./training/movie/4ad89-35349.model')
+    # talking('./training/movie/4ad89-35349.model')
     # training('./training/movie/e14e1-48205.model')
-    talking('./training/movie/e14e1-ea565.model') # movie dataset 
+    # talking('./training/movie/e14e1-ea565.model') # movie dataset 
     # talking('./training/movie/0a68e-e0597.model') # conselchat dataset 
     # training('./training/movie/')
+    training()
 
 
