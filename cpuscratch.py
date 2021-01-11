@@ -37,11 +37,11 @@ np2float = lambda x:torch.from_numpy(x).float()
 # util to get rid of emojis
 def deEmojify(text):
     regrex_pattern = re.compile(pattern = "["
-        u"\U0001F600-\U0001F64F"  # emoticons
-        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-        u"\U0001F680-\U0001F6FF"  # transport & map symbol
-        u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-                           "]+", flags = re.UNICODE)
+                                u"\U0001F600-\U0001F64F"  # emoticons
+                                u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+                                u"\U0001F680-\U0001F6FF"  # transport & map symbol
+                                u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+                                "]+", flags = re.UNICODE)
     return regrex_pattern.sub(r'',text)
 
 ## util to check gradient flow from https://github.com/alwynmathew/gradflow-check
@@ -54,7 +54,7 @@ def plot_grad_flow(named_parameters):
             ave_grads.append(p.grad.abs().mean())
 
     print([i.item() for i in ave_grads])
-#     plt.plot(ave_grads, alpha=0.3, color="b")
+    #     plt.plot(ave_grads, alpha=0.3, color="b")
     # plt.hlines(0, 0, len(ave_grads)+1, linewidth=1, color="k" )
     # plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
     # plt.xlim(xmin=0, xmax=len(ave_grads))
@@ -81,19 +81,19 @@ def plot_grad_flow_bars(named_parameters):
             max_grads.append(p.grad.abs().max())
 
 #     plt.bar(np.arange(len(max_grads)), max_grads, alpha=0.1, lw=1, color="c")
-    # plt.bar(np.arange(len(max_grads)), ave_grads, alpha=0.1, lw=1, color="b")
-    # plt.hlines(0, 0, len(ave_grads)+1, lw=2, color="k" )
-    # plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
-    # plt.xlim(left=0, right=len(ave_grads))
-    # plt.ylim(bottom = -0.001, top=0.02) # zoom in on the lower gradient regions
-    # plt.xlabel("Layers")
-    # plt.ylabel("average gradient")
-    # plt.title("Gradient flow")
-    # plt.grid(True)
-    # plt.legend([Line2D([0], [0], color="c", lw=4),
-                # Line2D([0], [0], color="b", lw=4),
-                # Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
-    # plt.show()
+# plt.bar(np.arange(len(max_grads)), ave_grads, alpha=0.1, lw=1, color="b")
+# plt.hlines(0, 0, len(ave_grads)+1, lw=2, color="k" )
+# plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
+# plt.xlim(left=0, right=len(ave_grads))
+# plt.ylim(bottom = -0.001, top=0.02) # zoom in on the lower gradient regions
+# plt.xlabel("Layers")
+# plt.ylabel("average gradient")
+# plt.title("Gradient flow")
+# plt.grid(True)
+# plt.legend([Line2D([0], [0], color="c", lw=4),
+# Line2D([0], [0], color="b", lw=4),
+# Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
+# plt.show()
 
 #### Embedding seed ####
 # print("Loading word vectors...")
@@ -151,7 +151,7 @@ class Transformer(nn.Module):
         pe = torch.zeros(length_max, d_model)
         position = torch.arange(0, length_max).unsqueeze(1)
         div_term = torch.exp((torch.arange(0, d_model, 2, dtype=torch.float) *
-                             -(math.log(10000.0) / d_model)))
+                              -(math.log(10000.0) / d_model)))
         pe[:, 0::2] = torch.sin(position.float() * div_term)
         pe[:, 1::2] = torch.cos(position.float() * div_term)
 
@@ -182,7 +182,7 @@ class Transformer(nn.Module):
             decseq =  decoder_seq_size
         else:
             decseq = self.maxLength 
-                
+            
         embedded = self.encoderEmbedding(x)*math.sqrt(self.embeddingSize) #why?
 
         positional_encoding = self.positionalencoding1d(self.embeddingSize, self.maxLength)
@@ -190,7 +190,7 @@ class Transformer(nn.Module):
 
         encoder_padding_mask = torch.eq(x, 0)
         encoder_memory = self.encoder(encoder_input.transpose(0,1), src_key_padding_mask=encoder_padding_mask)
-    
+        
         # decoder_seed = 
         seed = self.decoderEmbedding(decoder_seed)
 
@@ -231,7 +231,7 @@ print("Model constructed.")
 #### Data Prep ####
 print("Establishing dataset...")
 dataset_name = "./movie_replies_long.csv"
-    
+
 with open(dataset_name, "r") as dataFile:
     csvReader = csv.reader(dataFile, delimiter="±")
     dataset_raw = []
@@ -306,17 +306,17 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
 
 
 # for i in batches:
-    # input_batch = [] # list of onehot inputs
-    # output_batch = [] # list of onehot outputs
-    # for e in i:
-        # input_onehot = np.zeros(len(vocabulary))
-        # input_onehot[e[0]] = 1
-        # input_batch.append(input_onehot)
-        # output_onehot = np.zeros(len(vocabulary))
-        # output_onehot[e[1]] = 1
-        # output_batch.append(output_onehot)
-    # inputs_batched.append(np.array(input_batch))
-    # outputs_batched.append(np.array(output_batch))
+# input_batch = [] # list of onehot inputs
+# output_batch = [] # list of onehot outputs
+# for e in i:
+# input_onehot = np.zeros(len(vocabulary))
+# input_onehot[e[0]] = 1
+# input_batch.append(input_onehot)
+# output_onehot = np.zeros(len(vocabulary))
+# output_onehot[e[1]] = 1
+# output_batch.append(output_onehot)
+# inputs_batched.append(np.array(input_batch))
+# outputs_batched.append(np.array(output_batch))
 
 
 #### Test Sentence Prep ####
@@ -350,11 +350,11 @@ def init_weights(m):
     elif type(m) == nn.LayerNorm:
         torch.nn.init.normal_(m.weight.data)
         m.bias.data.fill_(0)
-model.apply(init_weights)
+        model.apply(init_weights)
 
 # def crossEntropy(logits, targets_sparse, epsilon=1e-8):
-    # targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
-    # target_mask = torch.not_equal(targets_sparse, 0).float()
+# targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
+# target_mask = torch.not_equal(targets_sparse, 0).float()
 
     # cross_entropy = torch.mean(-torch.log(torch.gather(logits+epsilon, 1, targets).squeeze(1)), -1)
 
@@ -370,9 +370,9 @@ print("Loss function done.")
 
 # nll = torch.nn.NLLLoss(reduce=False)
 # def maskeddNLL(logits, targets_sparse):
-    # vals = nll(logits.transpose(1,2), targets_sparse)
-    # target_mask = torch.not_equal(targets_sparse, 0).float()
-    # return torch.mean(target_mask*vals)
+# vals = nll(logits.transpose(1,2), targets_sparse)
+# target_mask = torch.not_equal(targets_sparse, 0).float()
+# return torch.mean(target_mask*vals)
         
 print("Instatiating loss function...")
 # criterion = torch.nn.CrossEntropyLoss()
@@ -389,7 +389,6 @@ def training(retrain=None):
 
     breakpoint()
 
-
     if retrain is not None:
         checkpoint = torch.load(retrain, map_location=torch.device('cpu'))
         model.load_state_dict(checkpoint["model_state"])
@@ -404,17 +403,18 @@ def training(retrain=None):
 
     writer = SummaryWriter(f'./training/movie/logs/{modelID}')
 
-# random.shuffle(zipped_dataset)
-    
+    # random.shuffle(zipped_dataset)
+
+
 
     model.train() # duh
     for epoch in range(epochs):
         #
-#         if (epoch % 3 == 0) and epoch != 0:
-            # print(f'Taking a 15 min fridge break before starting at {epoch}...')
-            # for _ in tqdm(range(60*15)):
-                # time.sleep(1)
-            # print(f'Fridge break done. Let\'s get cracking on epoch {epoch}')
+        #         if (epoch % 3 == 0) and epoch != 0:
+        # print(f'Taking a 15 min fridge break before starting at {epoch}...')
+        # for _ in tqdm(range(60*15)):
+        # time.sleep(1)
+        # print(f'Fridge break done. Let\'s get cracking on epoch {epoch}')
 
         checkpointID = str(uuid.uuid4())[-5:]
         batch_data_group = list(zip(inputs_batched, outputs_batched))
@@ -443,8 +443,8 @@ def training(retrain=None):
             loss_val = criterion(prediction, oup_torch, target_mask)
 
 #             target_mask = torch.not_equal(oup_torch, 0).float()
-            # loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
-            # loss_val = torch.mean(target_mask*loss_matrix)
+# loss_matrix = torch.mean((prediction-torch.nn.functional.one_hot(oup_torch, len(vocabulary)))**2, 2)
+# loss_val = torch.mean(target_mask*loss_matrix)
 
             loss_val.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
@@ -464,7 +464,7 @@ def training(retrain=None):
                         prediction_value.append(vocabulary_inversed[i])
                     except KeyError:
                         prediction_value.append("<err>")
-                prediction_sentences.append(prediction_value)
+                        prediction_sentences.append(prediction_value)
 
             final_sent = ""
             for word in prediction_sentences[0]:
@@ -474,7 +474,7 @@ def training(retrain=None):
             writer.add_text('Train/sample', final_sent, batch+(epoch*len(inputs_batched)))
 
             batch_data_feed.set_description(f'| Model: {modelID}@{checkpointID} | Epoch: {epoch} | Batch: {batch} | Loss: {loss_val:.5f} |')
-        #plot_grad_flow(model.named_parameters())
+            #plot_grad_flow(model.named_parameters())
 
         # CheckpointID,ModelID,ModelVersion,Dataset,Initial Runtime,Current Time,Epoch,Loss,Checkpoint Filename
 
@@ -495,11 +495,11 @@ def training(retrain=None):
             'model_state': model.state_dict(),
             'optimizer_state': adam.state_dict(),
             'lr': scheduler.get_last_lr()
-            }, f'./training/movie/{modelID}-{checkpointID}.model')
+        }, f'./training/movie/{modelID}-{checkpointID}.model')
 
         print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
         scheduler.step()
-    writer.close()
+        writer.close()
 
 def inferring(url):
     checkpoint = torch.load(url, map_location=torch.device('cpu'))
@@ -581,15 +581,15 @@ def talking(url):
                             prediction_value.append(f' {result}')
                     except KeyError:
                         prediction_value.append("<err>")
-                prediction_sentences.append(prediction_value)
+                        prediction_sentences.append(prediction_value)
 
             final_sents = []
             for result_sentence in prediction_sentences:
                 final_sent = ""
                 for word in result_sentence:
                     final_sent = final_sent + word
-                final_sents.append(final_sent)
-            print(f'Transformer: {final_sents[0].strip()}')
+                    final_sents.append(final_sent)
+                    print(f'Transformer: {final_sents[0].strip()}')
 
 
 talking('./GobertV5/movie/4ad89-35349.model')
