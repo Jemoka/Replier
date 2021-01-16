@@ -308,6 +308,8 @@ with open(dataset_name, "r") as dataFile:
         input_sentences = sent_tokenize(sent_inp)
         output_sentences = sent_tokenize(sent_oup)
         if (input_sentences[0] not in inpSet and output_sentences[0] not in oupSet):
+            inpSet.add(input_sentences[0])
+            oupSet.add(output_sentences[0])
             input_sentences = sent_tokenize(sent_inp)
             output_sentences = sent_tokenize(sent_oup)
             while len(input_sentences) > 0 and len(output_sentences) > 0:
@@ -322,7 +324,6 @@ with open(dataset_name, "r") as dataFile:
 print("De-emojifying corpus dataset...")
 dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
 dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
-
 
 print("Cutting corpus dataset...")
 zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
@@ -664,6 +665,6 @@ if __name__ == '__main__':
     # talking('./training/movie/e14e1-ea565.model') # movie dataset 
     # talking('./training/movie/0a68e-e0597.model') # conselchat dataset 
     # training('./training/movie/')
-    training()
+    training() #algobert the latest model file here?
 
 
