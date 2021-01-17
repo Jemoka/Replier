@@ -360,7 +360,7 @@ dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 32
+batch_size = 28
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
@@ -443,7 +443,7 @@ adam = optimizer.Adam(model.parameters(), initial_lr, betas=(0.9, 0.98), eps=1e-
 scheduler = torch.optim.lr_scheduler.LambdaLR(adam, lr_factor) # decay schedule
 
 #### Training ####
-def training(retrain=None):
+def training(retrain=None, startepoch=0):
     print("Ok, we are ready to train. On your go.")
     breakpoint()
 
@@ -549,7 +549,8 @@ def training(retrain=None):
             csvfile = csv.writer(df)
             csvfile.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model', f'{retrain}'])
 
-        if epoch % 20 == 0:
+        # if epoch % 20 == 0:
+        if True:
             torch.save({
                 'version': version,
                 'modelID': modelID,
@@ -560,8 +561,8 @@ def training(retrain=None):
                 'model_state': model.state_dict(),
                 'optimizer_state': adam.state_dict(),
                 'lr': scheduler.get_last_lr()
-                }, f'./training/movie/{modelID}-{checkpointID}.model')
-            print(f'>>>>>>>>>>>>>>>>>>\nMODEL {modelID}-{checkpointID}.model SAVED\n>>>>>>>>>>>>>>>>>>')
+                }, f'./training/movie/{startepoch + epoch}-{modelID}-{checkpointID}.model')
+            print(f'>>>>>>>>>>>>>>>>>>\nMODEL {startepoch + epoch}-{modelID}-{checkpointID}.model SAVED\n>>>>>>>>>>>>>>>>>>')
 
         # print(f'| EPOCH DONE | Epoch: {epoch} | Loss: {loss_val} |')
     writer.close()
@@ -662,9 +663,10 @@ def talking(url=None):
 if __name__ == '__main__':
     # talking('./training/movie/4ad89-35349.model')
     # training('./training/movie/e14e1-48205.model')
-    # talking('./training/movie/e14e1-ea565.model') # movie dataset 
-    # talking('./training/movie/0a68e-e0597.model') # conselchat dataset 
+    # talking('./training/movie/e14e1-ea565.model') # movie dataset
+    # talking('./training/movie/0a68e-e0597.model') # conselchat dataset
     # training('./training/movie/')
-    training() #algobert the latest model file here?
-
-
+    latest_model_snapshot = max(glob('./training/movie/*.model'), key=getctime)
+    print(f'>>>>>>>>>>>>>>>>>> using model snapshot at {latest_model_snapshot}')
+    training(latest_model_snapshot)
+    # training()
