@@ -1,4 +1,5 @@
 #pylint: disable=E1101
+#type: ignore
 
 import re
 import csv
@@ -7,8 +8,11 @@ import uuid
 import math
 import random
 import numpy as np
+from os.path import getctime
 from datetime import datetime
 
+
+from glob import glob
 from tqdm import tqdm
 
 from collections import defaultdict
@@ -26,6 +30,13 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import *
 
 from gensim.models.keyedvectors import KeyedVectors
+
+import flask
+from flask import request, jsonify
+
+app = flask.Flask(__name__)
+app.config["DEBUG"] = True
+
 
 # matplotlib.use('pdf')  # Or any other X11 back-end
 
@@ -339,7 +350,7 @@ print("Data constructed.")
 # =======
 print("Creating model...")
 # model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=6, transformerHiddenDenseSize=512, linearHiddenSize=256))
-model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=6, transformerHiddenDenseSize=512, linearHiddenSize=256))
+model = nn.DataParallel(Transformer(34933, maxLength=max_length, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=6, transformerHiddenDenseSize=512, linearHiddenSize=256))
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 # Weight Initialization
@@ -622,10 +633,83 @@ def export(url, path):
         torch.onnx.export(model.module, prediction_x_torch, path)
         valid = True
 
+@app.route("/talk", methods=["POST"])
+def talk_rest():
+    if 'payload' in request.args:
+        payload = str(request.args['payload'])
+    else:
+        return jsonify({"result": "error", "payload": "missing payload"});
+
+    sentences = [payload]
+
+    try:
+        prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
+    except KeyError:
+        return jsonify({"result": "error", "payload": "unknown word"});
+
+    prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
+
+    prediction_x_torch = np2tens(prediction_x_padded)
+
+    with torch.no_grad():
+        # try:
+        prediction = model(prediction_x_torch, None, None, prediction_x_torch.shape[0])
+#             except RuntimeError:
+            # print("Supervisor: Model RuntimeError. You probably used an unknown word. Breaking")
+            # continue
+        k = 1
+        topk = torch.topk(prediction,k).indices.cpu()
+        permutations = torch.randperm(k)
+        prediction_values = np.array(topk[:, :, permutations][:,:,0])
+        prediction_sentences = []
+        for e in prediction_values:
+            prediction_value = []
+            for i in e:
+                try:
+                    result = vocabulary_inversed[i]
+                    if result == "." or result == "!" or result == "?" or result == ",":
+                        prediction_value.append(result)
+                    elif result == "s" or result == "d" or result == "re" or result == "m" or result == "ll" or result == "t":
+                        prediction_value.append(result)
+                    elif result == "'":
+                        prediction_value.append("'")
+                    elif result == "<EOS>":
+                        break
+                    elif result == "i":
+                        prediction_value.append("I")
+                    else:
+                        prediction_value.append(f' {result}')
+                except KeyError:
+                    prediction_value.append("<err>")
+            prediction_sentences.append(prediction_value)
+
+        final_sents = []
+        for result_sentence in prediction_sentences:
+            final_sent = ""
+            for word in result_sentence:
+                final_sent = final_sent + word
+            final_sents.append(final_sent)
+        return jsonify({"result": "success", "payload": final_sents[0].strip()});
+
+
+def flasking(url=None):
+    if url is None:
+        url = max(glob('./training/movie/*.model'), key=getctime)
+        print(f'>>>>>>>>>>>>>>>>>> using model snapshot at {url}')
+    print("Initializing Talk Script...")
+    print("Building model")
+    checkpoint = torch.load(url, map_location=torch.device('cpu'))
+    model.load_state_dict(checkpoint["model_state"])
+    model.eval()
+
+    print("Done.")
+    app.run()
+
+#
 
 
 
 # export('./training/movie/PsychCheckpoint0.model', "./training/movie/PsychCheckpoint0.onnx")
-talking("./training/movie/PsychTraining2.model")
+flasking()
 
 
