@@ -369,6 +369,7 @@ def dataprep():
             "eos_token": eos_token,
             }, df)
 
+# dataprep()
 with open("./dataset.bin", "rb") as df:
     data = pickle.load(df)
     max_length = data["max_length"]
@@ -387,7 +388,7 @@ with open("./dataset.bin", "rb") as df:
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 28
+batch_size = 64
 
 chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
