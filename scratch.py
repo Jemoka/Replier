@@ -231,6 +231,8 @@ print("Model constructed.")
 
 #### Data Prep ####
 
+tokenizer = get_tokenizer("revtok")
+dataset_name = "combined_set"
 def dataprep():
     print("Chucking vocabulary dataset...")
     dataset_name = "./alexa_replies.csv"
@@ -262,7 +264,6 @@ def dataprep():
 
     dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
-    tokenizer = get_tokenizer("revtok")
 
     print("Creating vocabulary object...")
     vocabulary = defaultdict(lambda: len(vocabulary))
@@ -363,6 +364,9 @@ def dataprep():
             "dataset_y_padded": dataset_y_padded,
             "dataset_x_raw": dataset_x_raw,
             "dataset_y_raw": dataset_y_raw,
+            "pad": pad,
+            "sos_token": sos_token,
+            "eos_token": eos_token,
             }, df)
 
 with open("./dataset.bin", "rb") as df:
@@ -376,6 +380,10 @@ with open("./dataset.bin", "rb") as df:
     dataset_y_padded = data["dataset_y_padded"]
     dataset_x_raw = data["dataset_x_raw"]
     dataset_y_raw = data["dataset_y_raw"]
+    pad = data["pad"]
+    sos_token = data["sos_token"]
+    eos_token = data["eos_token"]
+
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
