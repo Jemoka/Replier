@@ -6,6 +6,7 @@ import csv
 import time
 import uuid
 import math
+import pickle 
 import random
 import numpy as np
 from os.path import getctime
@@ -240,89 +241,89 @@ print("Model constructed.")
 # optimizer = optimizer.Adam(replier.parameters(), lr=3e-3)
 
 #### Data Prep ####
-print("Establishing dataset...")
-dataset_name = "./movie_replies_long.csv"
+# print("Establishing dataset...")
+# dataset_name = "./movie_replies_long.csv"
     
-with open(dataset_name, "r") as dataFile:
-    csvReader = csv.reader(dataFile, delimiter="±")
-    dataset_raw = []
-    filesize= sum(1 for line in dataFile)
-    (dataFile).seek(0)
-    for row in tqdm(csvReader, total=filesize):
-        sent_inp = row[-2]
-        sent_oup = row[-1]
-        input_sentences = sent_tokenize(sent_inp)
-        output_sentences = sent_tokenize(sent_oup)
-        try: 
-            dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
-        except IndexError:
-            continue;
+# with open(dataset_name, "r") as dataFile:
+    # csvReader = csv.reader(dataFile, delimiter="±")
+    # dataset_raw = []
+    # filesize= sum(1 for line in dataFile)
+    # (dataFile).seek(0)
+    # for row in tqdm(csvReader, total=filesize):
+        # sent_inp = row[-2]
+        # sent_oup = row[-1]
+        # input_sentences = sent_tokenize(sent_inp)
+        # output_sentences = sent_tokenize(sent_oup)
+        # try: 
+            # dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
+        # except IndexError:
+            # continue;
 
-print("De-emojifying dataset...")
-dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
-dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
+# print("De-emojifying dataset...")
+# dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
+# dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 
-# <<<<<<< HEAD
+# # <<<<<<< HEAD
+# # zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
+
+# # # crop the dataset b/c we don't have the big bucks
+# # zipped_dataset = zipped_dataset[-2000:]
+# # =======
+# print("Cutting dataset...")
 # zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
+# # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
-# # crop the dataset b/c we don't have the big bucks
-# zipped_dataset = zipped_dataset[-2000:]
-# =======
-print("Cutting dataset...")
-zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
-# >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
-
-dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
+# dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
 tokenizer = get_tokenizer("revtok")
 
-print("Creating vocabulary object...")
-vocabulary = defaultdict(lambda: len(vocabulary))
+# print("Creating vocabulary object...")
+# vocabulary = defaultdict(lambda: len(vocabulary))
 
-pad = vocabulary["<PAD>"]
-sos_token = vocabulary["<SOS>"]
-eos_token = vocabulary["<EOS>"]
+# pad = vocabulary["<PAD>"]
+# sos_token = vocabulary["<SOS>"]
+# eos_token = vocabulary["<EOS>"]
 
-print("Compiling dataset...")
-dataset_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_x_raw)][1:]
-dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_y_raw)][1:]
+# print("Compiling dataset...")
+# dataset_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_x_raw)][1:]
+# dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_y_raw)][1:]
 
-vocabulary_inversed = {v: k for k, v in vocabulary.items()}
+# vocabulary_inversed = {v: k for k, v in vocabulary.items()}
 
-print("Finalizing batches...")
-max_length = max(max([len(i) for i in dataset_x_tokenized]), max([len(i) for i in dataset_y_tokenized]))+2 # +2 for safety ig
+# print("Finalizing batches...")
+# max_length = max(max([len(i) for i in dataset_x_tokenized]), max([len(i) for i in dataset_y_tokenized]))+2 # +2 for safety ig
 
-if max_length % 2 != 0:
-    max_length += 1
+# if max_length % 2 != 0:
+    # max_length += 1
 
-dataset_x_padded = [x+(max_length-len(x))*[0] for x in dataset_x_tokenized]
-dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
+# dataset_x_padded = [x+(max_length-len(x))*[0] for x in dataset_x_tokenized]
+# dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
 
-# normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
+# # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 16 
+# batch_size = 16 
 
-chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
+# chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
 
-inputs_batched = np.array([i for i in chunk(dataset_x_padded, batch_size) if len(i) == batch_size]) # batchify and remove empty list
-outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if len(i) == batch_size]) # batchify and remove empty list
-
-
-# inputs_batched = [np.array([np.array([e[0] for e in sentence]) for sentence in batch]) for batch in batches] # list of inputs
-# outputs_batched = [np.array([np.array([e[1] for e in sentence]) for sentence in batch]) for batch in batches] # list of outputs
+# inputs_batched = np.array([i for i in chunk(dataset_x_padded, batch_size) if len(i) == batch_size]) # batchify and remove empty list
+# outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if len(i) == batch_size]) # batchify and remove empty list
 
 
-# inputs_batched = [] # list of onehot inputs
-# outputs_batched = [] # list of onehot outputs
+# # inputs_batched = [np.array([np.array([e[0] for e in sentence]) for sentence in batch]) for batch in batches] # list of inputs
+# # outputs_batched = [np.array([np.array([e[1] for e in sentence]) for sentence in batch]) for batch in batches] # list of outputs
 
 
-# for i in batches:
-    # input_batch = [] # list of onehot inputs
-    # output_batch = [] # list of onehot outputs
-    # for e in i:
-        # input_onehot = np.zeros(len(vocabulary))
-        # input_onehot[e[0]] = 1
-        # input_batch.append(input_onehot)
+# # inputs_batched = [] # list of onehot inputs
+# # outputs_batched = [] # list of onehot outputs
+
+
+# # for i in batches:
+    # # input_batch = [] # list of onehot inputs
+    # # output_batch = [] # list of onehot outputs
+    # # for e in i:
+        # # input_onehot = np.zeros(len(vocabulary))
+        # # input_onehot[e[0]] = 1
+#         # input_batch.append(input_onehot)
         # output_onehot = np.zeros(len(vocabulary))
         # output_onehot[e[1]] = 1
         # output_batch.append(output_onehot)
@@ -342,6 +343,21 @@ outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if le
 # prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
 
 # prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
+with open("./dataset.bin", "rb") as df:
+    data = pickle.load(df)
+    max_length = data["max_length"]
+    vocabulary = data["vocabulary"]
+    vocabulary_inversed = data["vocabulary_inversed"]
+    dataset_x_tokenized = data["dataset_x_tokenized"]
+    dataset_y_tokenized = data["dataset_y_tokenized"]
+    dataset_x_padded = data["dataset_x_padded"]
+    dataset_y_padded = data["dataset_y_padded"]
+    dataset_x_raw = data["dataset_x_raw"]
+    dataset_y_raw = data["dataset_y_raw"]
+    pad = data["pad"]
+    sos_token = data["sos_token"]
+    eos_token = data["eos_token"]
+
 
 #### Hyperparametres ####
 # <<<<<<< HEAD
@@ -350,7 +366,7 @@ print("Data constructed.")
 # =======
 print("Creating model...")
 # model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=6, transformerHiddenDenseSize=512, linearHiddenSize=256))
-model = nn.DataParallel(Transformer(34933, maxLength=max_length, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=6, transformerHiddenDenseSize=512, linearHiddenSize=256))
+model = nn.DataParallel(Transformer(len(vocabulary), maxLength=max_length, numberEncoderLayers=2, numberDecoderLayers=2, attentionHeadCount=6, transformerHiddenDenseSize=512, linearHiddenSize=256))
 # >>>>>>> c252b6a881ae62cf53b15440272c4567a7aea0b2
 
 # Weight Initialization
@@ -365,7 +381,7 @@ model.apply(init_weights)
 
 # def crossEntropy(logits, targets_sparse, epsilon=1e-8):
     # targets = nn.functional.one_hot(targets_sparse, len(vocabulary))
-    # target_mask = torch.not_equal(targets_sparse, 0).float()
+    # target_mask = torch.not_equal(targets_cparse, 0).float()
 
     # cross_entropy = torch.mean(-torch.log(torch.gather(logits+epsilon, 1, targets).squeeze(1)), -1)
 
@@ -710,6 +726,6 @@ def flasking(url=None):
 
 
 # export('./training/movie/PsychCheckpoint0.model', "./training/movie/PsychCheckpoint0.onnx")
-flasking()
+talking("./training/movie/184-d4f67-3c29f.model")
 
 
