@@ -1,11 +1,13 @@
 #pylint: disable=E1101
 #type: ignore
 
+import os
 import re
 import csv
 import time
 import uuid
 import math
+import discord
 import pickle 
 import random
 import numpy as np
@@ -26,17 +28,15 @@ from torch.utils.tensorboard import SummaryWriter
 from torchtext.data.utils import get_tokenizer
 from nltk.tokenize import sent_tokenize
 
-import matplotlib
-import matplotlib.pyplot as plt
-from matplotlib.lines import *
-
-from gensim.models.keyedvectors import KeyedVectors
-
 import flask
 from flask import request, jsonify
 
+from dotenv import load_dotenv
+
+load_dotenv()
+TOKEN = os.getenv('DISCORD_TOKEN')
+
 app = flask.Flask(__name__)
-app.config["DEBUG"] = True
 
 
 # matplotlib.use('pdf')  # Or any other X11 back-end
@@ -343,7 +343,7 @@ tokenizer = get_tokenizer("revtok")
 # prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
 
 # prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
-with open("./dataset.bin", "rb") as df:
+with open("./dataset_d4f67.bin", "rb") as df:
     data = pickle.load(df)
     max_length = data["max_length"]
     vocabulary = data["vocabulary"]
@@ -719,13 +719,102 @@ def flasking(url=None):
     model.eval()
 
     print("Done.")
-    app.run()
+#
 
+client = discord.Client()
+
+@client.event
+async def on_ready():
+    activity = discord.Game(name="184-d4f67-3c29f.model")
+    await client.change_presence(status=discord.Status.online, activity=activity)
+
+
+@client.event
+async def on_message(message):
+    if message.author == client.user:
+        return
+
+    if message.content[:6] == "!reply":
+        sentences = [message.content[6:].strip()]
+    elif message.content[:2] == "!r":
+        sentences = [message.content[2:].strip()]
+    elif isinstance(message.channel, discord.channel.DMChannel):
+        sentences = [message.content.strip()]
+    else: 
+        return
+
+    try:
+        prediction_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in sentences]
+    except KeyError:
+        await message.channel.send("You used an unknown word!")
+        return
+
+    prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
+
+    prediction_x_torch = np2tens(prediction_x_padded)
+
+    with torch.no_grad():
+        # try:
+
+        async with message.channel.typing():
+            prediction = model(prediction_x_torch, None, None, prediction_x_torch.shape[0])
+#             except RuntimeError:
+            # print("Supervisor: Model RuntimeError. You probably used an unknown word. Breaking")
+            # continue
+        k = 1
+        topk = torch.topk(prediction,k).indices.cpu()
+        permutations = torch.randperm(k)
+        prediction_values = np.array(topk[:, :, permutations][:,:,0])
+        prediction_sentences = []
+        for e in prediction_values:
+            prediction_value = []
+            for i in e:
+                try:
+                    result = vocabulary_inversed[i]
+                    if result == "." or result == "!" or result == "?" or result == ",":
+                        prediction_value.append(result)
+                    elif result == "s" or result == "d" or result == "re" or result == "m" or result == "ll" or result == "t":
+                        prediction_value.append(result)
+                    elif result == "'":
+                        prediction_value.append("'")
+                    elif result == "<EOS>":
+                        break
+                    elif result == "i":
+                        prediction_value.append("I")
+                    else:
+                        prediction_value.append(f' {result}')
+                except KeyError:
+                    prediction_value.append("<err>")
+            prediction_sentences.append(prediction_value)
+
+        final_sents = []
+        for result_sentence in prediction_sentences:
+            final_sent = ""
+            for word in result_sentence:
+                final_sent = final_sent + word
+            final_sents.append(final_sent)
+
+        with open("replier_talking_data.csv", "a") as df:
+            writer = csv.writer(df)
+            writer.writerow([sentences[0], final_sents[0].strip(), message.author, time.time()])
+        await message.channel.send(final_sents[0].strip())
+
+def discording(url=None):
+    if url is None:
+        url = max(glob('./training/movie/*.model'), key=getctime)
+        print(f'>>>>>>>>>>>>>>>>>> using model snapshot at {url}')
+    print("Initializing Talk Script...")
+    print("Building model")
+    checkpoint = torch.load(url, map_location=torch.device('cpu'))
+    model.load_state_dict(checkpoint["model_state"])
+    model.eval()
+
+    client.run(TOKEN)
+    print("Done.")
 #
 
 
-
 # export('./training/movie/PsychCheckpoint0.model', "./training/movie/PsychCheckpoint0.onnx")
-talking("./training/movie/184-d4f67-3c29f.model")
+discording("./training/movie/184-d4f67-3c29f.model")
 
 
