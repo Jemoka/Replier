@@ -28,6 +28,7 @@ from nltk.tokenize import sent_tokenize
 import flask
 from flask import request, jsonify
 
+
 app = flask.Flask(__name__)
 app.config["DEBUG"] = True
 
@@ -235,22 +236,88 @@ tokenizer = get_tokenizer("revtok")
 dataset_name = "combined_set"
 def dataprep():
     print("Chucking vocabulary dataset...")
-    dataset_name = "./alexa_replies.csv"
+    # dataset_name = "./alexa_replies.csv"
 
+    dataset_name = "./movie_replies.csv"
     with open(dataset_name, "r") as dataFile:
-        csvReader = csv.reader(dataFile)
+        csvReader = csv.reader(dataFile, delimiter="±")
         dataset_raw = []
         filesize= sum(1 for line in dataFile)
         (dataFile).seek(0)
         for row in tqdm(csvReader, total=filesize):
             sent_inp = row[-2]
             sent_oup = row[-1]
-            dataset_raw.append([sent_inp.strip(), sent_oup.strip()])
+            input_sentences = sent_tokenize(sent_inp)
+            output_sentences = sent_tokenize(sent_oup)
+            try:
+                if input_sentences[0].strip() != output_sentences[0].strip():
+                    dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
+            except IndexError:
+                continue;
 
+    # dataset_name = "./alexa_replies.csv"
+
+    # with open(dataset_name, "r") as dataFile:
+        # csvReader = csv.reader(dataFile)
+        # filesize= sum(1 for line in dataFile)
+        # (dataFile).seek(0)
+        # for row in tqdm(csvReader, total=filesize):
+            # sent_inp = row[-2]
+            # sent_oup = row[-1]
+            # if sent_inp == sent_oup:
+                # continue;
+
+            # input_sentences = sent_tokenize(sent_inp)
+            # output_sentences = sent_tokenize(sent_oup)
+            # try:
+                # dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
+            # except IndexError:
+                # continue;
+
+
+    dataset_name = "./therapy_replies.csv"
+
+    with open(dataset_name, "r") as dataFile:
+        csvReader = csv.reader(dataFile)
+        filesize= sum(1 for line in dataFile)
+        (dataFile).seek(0)
+        for row in tqdm(csvReader, total=filesize):
+            sent_inp = row[-2]
+            sent_oup = row[-1]
+            if sent_inp == sent_oup:
+                continue;
+
+            input_sentences = sent_tokenize(sent_inp)
+            output_sentences = sent_tokenize(sent_oup)
+            try:
+                dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
+            except IndexError:
+                continue;
+    # dataset_name = "./movie_replies.csv"
+
+    # with open(dataset_name, "r") as dataFile:
+        # csvReader = csv.reader(dataFile, delimiter="±")
+        # filesize= sum(1 for line in dataFile)
+        # (dataFile).seek(0)
+        # for row in tqdm(csvReader, total=filesize):
+            # sent_inp = row[-2]
+            # sent_oup = row[-1]
+            # dataset_raw.append([sent_inp.strip(), sent_oup.strip()])
+            # input_sentences = sent_tokenize(sent_inp)
+            # output_sentences = sent_tokenize(sent_oup)
+            # while len(input_sentences) > 0 and len(output_sentences) > 0:
+                # if len(output_sentences[0]) < 5: 
+                    # del output_sentences[0];
+                # else:
+                    # dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
+                    # del input_sentences[0];
+                    # del output_sentences[0];
 
     print("De-emojifying vocabulary dataset...")
     dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
     dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
+
+    # encoder = Encoder(, pct_bpe=0.95)
 
     # <<<<<<< HEAD
     # zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
@@ -273,12 +340,14 @@ def dataprep():
     eos_token = vocabulary["<EOS>"]
 
     print("Compiling vocabulary dataset...")
-    dataset_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_x_raw)][1:]
-    dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i)]+[eos_token] for i in tqdm(dataset_y_raw)][1:]
+    dataset_x_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i.strip())]+[eos_token] for i in tqdm(dataset_x_raw)][1:]
+    dataset_y_tokenized = [[sos_token]+[vocabulary[e.lower().strip()] for e in tokenizer(i.strip())]+[eos_token] for i in tqdm(dataset_y_raw)][1:]
+
 
     print("Freezing vocabulary...")
     vocabulary = dict(vocabulary)
     vocabulary_inversed = {v: k for k, v in vocabulary.items()}
+
 
     print("Finalizing batches...")
     max_length = max(max([len(i) for i in dataset_x_tokenized]), max([len(i) for i in dataset_y_tokenized]))+2 # +2 for safety ig
@@ -286,69 +355,58 @@ def dataprep():
     if max_length % 2 != 0:
         max_length += 1
 
-    print("Chucking corpus dataset...")
-    dataset_name = "./therapy_replies.csv"
+    # print("Chucking corpus dataset...")
+    # dataset_name = "./therapy_replies.csv"
 
-    inpSet = set()
-    oupSet = set()
 
-    with open(dataset_name, "r") as dataFile:
-        csvReader = csv.reader(dataFile)
-        dataset_raw = []
-        filesize= sum(1 for line in dataFile)
-        (dataFile).seek(0)
-        for row in tqdm(csvReader, total=filesize):
-            sent_inp = row[-2]
-            sent_oup = row[-1]
-            input_sentences = sent_tokenize(sent_inp)
-            output_sentences = sent_tokenize(sent_oup)
-            try:
-                if (input_sentences[0] not in inpSet and output_sentences[0] not in oupSet):
-                    inpSet.add(input_sentences[0])
-                    oupSet.add(output_sentences[0])
-                    while len(input_sentences) > 0 and len(output_sentences) > 0:
-                        if len(output_sentences[0]) < 5: 
-                            del output_sentences[0];
-                        else:
-                            dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
-                            del input_sentences[0];
-                            del output_sentences[0];
-            except IndexError:
-                continue;
+    # with open(dataset_name, "r") as dataFile:
+        # csvReader = csv.reader(dataFile)
+        # dataset_raw = []
+        # filesize= sum(1 for line in dataFile)
+        # (dataFile).seek(0)
+        # for row in tqdm(csvReader, total=filesize):
+            # sent_inp = row[-2]
+            # sent_oup = row[-1]
+            # input_sentences = sent_tokenize(sent_inp)
+            # output_sentences = sent_tokenize(sent_oup)
+            # while len(input_sentences) > 0 and len(output_sentences) > 0:
+                # dataset_raw.append([(input_sentences[0]).strip(), (output_sentences[0]).strip()])
+                # del input_sentences[0];
+                # del output_sentences[0];
                 
-    print("De-emojifying corpus dataset...")
-    dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
-    dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
+    # print("De-emojifying corpus dataset...")
+    # dataset_x_raw = [deEmojify(i[0]) for i in dataset_raw]
+    # dataset_y_raw = [deEmojify(i[1]) for i in dataset_raw]
 
-    print("Cutting corpus dataset...")
-    zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
-    dataset_length = len(zipped_dataset)
-    dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
+    # print("Cutting corpus dataset...")
+    # zipped_dataset = list(zip(dataset_x_raw, dataset_y_raw))
+    # dataset_length = len(zipped_dataset)
+    # dataset_x_raw, dataset_y_raw = zip(*zipped_dataset)
 
-    print("Compiling corpus dataset...")
-    # dataset_x_tokenized = dataset_x_tokenized[:dataset_length]
-    # dataset_y_tokenized = dataset_y_tokenized[:dataset_length]
+    # print("Compiling corpus dataset...")
+    # # dataset_x_tokenized = dataset_x_tokenized[:dataset_length]
+    # # dataset_y_tokenized = dataset_y_tokenized[:dataset_length]
 
-    for i in tqdm(dataset_x_raw):
-        sentence = [sos_token]
-        for e in tokenizer(i)[:max_length-2]:
-            try:
-                sentence.append(vocabulary[e.lower().strip()])
-            except KeyError:
-                continue
-        sentence.append(eos_token)
-        dataset_x_tokenized.append(sentence)
+    # for i in tqdm(dataset_x_raw):
+        # sentence = [sos_token]
+        # for e in tokenizer(i)[:max_length-2]:
+            # try:
+                # sentence.append(vocabulary[e.lower().strip()])
+            # except KeyError:
+                # continue
+        # sentence.append(eos_token)
+        # dataset_x_tokenized.append(sentence)
 
 
-    for i in tqdm(dataset_y_raw):
-        sentence = [sos_token]
-        for e in tokenizer(i)[:max_length-2]:
-            try:
-                sentence.append(vocabulary[e.lower().strip()])
-            except KeyError:
-                continue
-        sentence.append(eos_token)
-        dataset_y_tokenized.append(sentence)
+    # for i in tqdm(dataset_y_raw):
+        # sentence = [sos_token]
+        # for e in tokenizer(i)[:max_length-2]:
+            # try:
+                # sentence.append(vocabulary[e.lower().strip()])
+            # except KeyError:
+                # continue
+        # sentence.append(eos_token)
+        # dataset_y_tokenized.append(sentence)
 
     dataset_x_padded = [x+(max_length-len(x))*[0] for x in dataset_x_tokenized]
     dataset_y_padded = [y+(max_length-len(y))*[0] for y in dataset_y_tokenized]
@@ -370,6 +428,8 @@ def dataprep():
             }, df)
 
 # dataprep()
+# breakpoint()
+print("Loading dataset...")
 with open("./dataset.bin", "rb") as df:
     data = pickle.load(df)
     max_length = data["max_length"]
@@ -385,13 +445,15 @@ with open("./dataset.bin", "rb") as df:
     sos_token = data["sos_token"]
     eos_token = data["eos_token"]
 
+# a = [vocabulary_inversed[i] for i in dataset_x_tokenized]
 
 # normalized_data = [list(zip(inp,oup)) for inp, oup in zip(dataset_x_tokenized, dataset_y_tokenized)] # pair up the data
 
-batch_size = 64
+batch_size = 48
 
-chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in range(len(seq)))) # batchification
+chunk = lambda seq,size: list((seq[i*size:((i+1)*size)] for i in tqdm(range(len(seq))))) # batchification
 
+print("Compiling batches...")
 inputs_batched = np.array([i for i in chunk(dataset_x_padded, batch_size) if len(i) == batch_size]) # batchify and remove empty list
 outputs_batched = np.array([i for i in chunk(dataset_y_padded, batch_size) if len(i) == batch_size]) # batchify and remove empty list
 
@@ -463,7 +525,7 @@ print("Loss function done.")
 print("Instatiating loss function...")
 # criterion = torch.nn.CrossEntropyLoss()
 criterion = maskedCrossEntropy
-initial_lr = 1/math.sqrt(300) # apparently Torch people think this is a good idea
+initial_lr = (1/math.sqrt(300)) # apparently Torch people think this is a good idea
 warmup = 4000
 lr_factor = lambda step: min(1/math.sqrt(step+1e-8), (step)*(warmup**-1.5)) #https://blog.tensorflow.org/2019/05/transformer-chatbot-tutorial-with-tensorflow-2.html
 # apparently Torch people think this is a good idea
@@ -482,7 +544,7 @@ def training(retrain=None, startepoch=0):
 
     epochs = 100000
     reporting = 2
-    accumulate =  8
+    accumulate =  2
 
     version = "JAN102020_Mixed"
     modelID = str(uuid.uuid4())[-5:]
@@ -577,8 +639,8 @@ def training(retrain=None, startepoch=0):
             csvfile = csv.writer(df)
             csvfile.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model', f'{retrain}'])
 
-        # if epoch % 20 == 0:
-        if True:
+        if epoch % 16 == 0:
+        # if True:
             torch.save({
                 'version': version,
                 'modelID': modelID,

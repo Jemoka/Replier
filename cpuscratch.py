@@ -10,6 +10,7 @@ import math
 import discord
 import pickle 
 import random
+import tweepy
 import numpy as np
 from os.path import getctime
 from datetime import datetime
@@ -37,6 +38,16 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 app = flask.Flask(__name__)
+
+import tweepy
+
+auth = tweepy.OAuthHandler(os.getenv('API_KEY'), os.getenv('API_SECRET'))
+auth.set_access_token(os.getenv('ACCESS_TOKEN'), os.getenv('ACCESS_SECRET_TOKEN'))
+
+api = tweepy.API(auth, wait_on_rate_limit=True, 
+        wait_on_rate_limit_notify=True)
+
+api.verify_credentials()
 
 
 # matplotlib.use('pdf')  # Or any other X11 back-end
@@ -343,7 +354,7 @@ tokenizer = get_tokenizer("revtok")
 # prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
 
 # prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
-with open("./dataset_d4f67.bin", "rb") as df:
+with open("./dataset.bin", "rb") as df:
     data = pickle.load(df)
     max_length = data["max_length"]
     vocabulary = data["vocabulary"]
@@ -725,7 +736,7 @@ client = discord.Client()
 
 @client.event
 async def on_ready():
-    activity = discord.Game(name="184-d4f67-3c29f.model")
+    activity = discord.Game(name="!r [your message] // 2032-3d39e-2ac96.model")
     await client.change_presence(status=discord.Status.online, activity=activity)
 
 
@@ -780,7 +791,7 @@ async def on_message(message):
                     elif result == "<EOS>":
                         break
                     elif result == "i":
-                        prediction_value.append("I")
+                        prediction_value.append(" I")
                     else:
                         prediction_value.append(f' {result}')
                 except KeyError:
@@ -796,8 +807,33 @@ async def on_message(message):
 
         with open("replier_talking_data.csv", "a") as df:
             writer = csv.writer(df)
-            writer.writerow([sentences[0], final_sents[0].strip(), message.author, time.time()])
+            writer.writerow([sentences[0], final_sents[0].strip(), message.author, time.time(), "2032-3d39e-2ac96"])
         await message.channel.send(final_sents[0].strip())
+
+class ReplyListener(tweepy.StreamListener):
+    def on_status(self, status):
+        print(status.text)
+        print(status)
+
+    def on_error(self, status_code):
+        print(status_code)
+
+
+def tweeting(url=None):
+    if url is None:
+        url = max(glob('./training/movie/*.model'), key=getctime)
+        print(f'>>>>>>>>>>>>>>>>>> using model snapshot at {url}')
+    print("Initializing Talk Script...")
+    print("Building model")
+    checkpoint = torch.load(url, map_location=torch.device('cpu'))
+    model.load_state_dict(checkpoint["model_state"])
+    model.eval()
+    
+    listener = ReplyListener(api)
+    myStream = tweepy.Stream(auth = api.auth, listener=listener)
+    myStream.filter(track=["transformereply"])
+    print("Done.")
+
 
 def discording(url=None):
     if url is None:
@@ -815,6 +851,7 @@ def discording(url=None):
 
 
 # export('./training/movie/PsychCheckpoint0.model', "./training/movie/PsychCheckpoint0.onnx")
-discording("./training/movie/184-d4f67-3c29f.model")
+# tweeting("./training/movie/1712-3d39e-51e51.model")
+discording("./training/movie/2032-3d39e-2ac96.model")
 
 
