@@ -354,7 +354,7 @@ tokenizer = get_tokenizer("revtok")
 # prediction_x_padded = np.array([x+(max_length-len(x))*[0] for x in prediction_x_tokenized])
 
 # prediction_x_torch = np2tens(prediction_x_padded).transpose(0,1)
-with open("./dataset.bin", "rb") as df:
+with open("./dataset_3d39e.bin", "rb") as df:
     data = pickle.load(df)
     max_length = data["max_length"]
     vocabulary = data["vocabulary"]
@@ -736,7 +736,7 @@ client = discord.Client()
 
 @client.event
 async def on_ready():
-    activity = discord.Game(name="!r [your message] // 2032-3d39e-2ac96.model")
+    activity = discord.Game(name="!r [your message] // 100-88638-a9f22.model")
     await client.change_presence(status=discord.Status.online, activity=activity)
 
 
@@ -807,7 +807,7 @@ async def on_message(message):
 
         with open("replier_talking_data.csv", "a") as df:
             writer = csv.writer(df)
-            writer.writerow([sentences[0], final_sents[0].strip(), message.author, time.time(), "2032-3d39e-2ac96"])
+            writer.writerow([sentences[0], final_sents[0].strip(), message.author, time.time(), "100-88638-a9f22"])
         await message.channel.send(final_sents[0].strip())
 
 class ReplyListener(tweepy.StreamListener):
@@ -852,6 +852,6 @@ def discording(url=None):
 
 # export('./training/movie/PsychCheckpoint0.model', "./training/movie/PsychCheckpoint0.onnx")
 # tweeting("./training/movie/1712-3d39e-51e51.model")
-discording("./training/movie/2032-3d39e-2ac96.model")
+discording("./training/movie/100-88638-a9f22.model")
 
 

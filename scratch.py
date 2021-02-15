@@ -428,7 +428,7 @@ def dataprep():
 # dataprep()
 # breakpoint()
 print("Loading dataset...")
-with open("./dataset.bin", "rb") as df:
+with open("./dataset_psycology.bin", "rb") as df:
     data = pickle.load(df)
     max_length = data["max_length"]
     vocabulary = data["vocabulary"]
@@ -637,7 +637,7 @@ def training(retrain=None, startepoch=0):
             csvfile = csv.writer(df)
             csvfile.writerow([checkpointID, modelID, version, dataset_name, initialHumanTime, nowHumanTime, epoch, loss_val.item(), f'{modelID}-{checkpointID}.model', f'{retrain}'])
 
-        if epoch % 16 == 0:
+        if epoch % 100 == 0:
         # if True:
             torch.save({
                 'version': version,
@@ -829,6 +829,6 @@ if __name__ == '__main__':
     # latest_model_snapshot = max(glob('./training/movie/*.model'), key=getctime)
     # print(f'>>>>>>>>>>>>>>>>>> using model snapshot at {latest_model_snapshot}')
     # flasking(latest_model_snapshot)
-    training()
+    training("./training/movie/2288-3d39e-b2db2.model")
 
 
