@@ -94,7 +94,7 @@ def turing(data, index, evaluate=2):
     print(f'{color.GREEN}{color.BOLD}3{color.END}{color.GREEN}: Human {color.END}')
     result = getch.getch()
     os.system('clear')
-    return result
+    return int(result)
 
 
 def review(db, index):
@@ -115,14 +115,21 @@ def review(db, index):
     os.system('clear')
     
     if random.uniform(0,1) < 0.5:
-        botRubric = rubric(data, index, 3)
-        humanRubric = rubric(data, index, 2)
+        botRubric = rubric(data, index, 2)
+        humanRubric = rubric(data, index, 3)
     else:
-        humanRubric = rubric(data, index, 2)
-        botRubric = rubric(data, index, 3)
+        humanRubric = rubric(data, index, 3)
+        botRubric = rubric(data, index, 2)
+
+    if random.uniform(0,1) < 0.5:
+        botTuring = rubric(data, index, 2)
+        humanTuring = rubric(data, index, 3)
+    else:
+        humanTuring = rubric(data, index, 3)
+        botTuring = rubric(data, index, 2)
 
     cursor.show()
-    return {"isPsych": isPsycology=='2', "botRubric": botRubric, "humanRubric": humanRubric}
+    return {"isPsych": isPsycology=='2', "botRubric": botRubric, "humanRubric": humanRubric, "botTuring": botTuring, "humanTuring": humanTuring}
 
 # print(color.CYAN + data[0][0] + color.END, "is cool.")
 # print(getch.getch())
