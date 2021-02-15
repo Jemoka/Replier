@@ -1,6 +1,8 @@
 import os
 import csv
 import getch
+import cursor
+import random
 from prettytable import PrettyTable
 
 class color:
@@ -9,9 +11,10 @@ class color:
    DARKCYAN = '\033[36m'
    BLUE = '\033[94m'
    GREEN = '\033[92m'
-   YELLOW = '\033[93m'
+   YELLOW = '\033[38;5;214m'
    RED = '\033[91m'
    BOLD = '\033[1m'
+   ORANGE= '\033[38;5;202m'
    UNDERLINE = '\033[4m'
    END = '\033[0m'
 
@@ -30,17 +33,100 @@ with open("./human_talkback_data.csv", "r") as df:
 
 REVIEWER = "Houjun Liu"
 
+def rubric(data, index, evaluate=2):
+    x = PrettyTable()
+    x.field_names = [f'{color.BLUE}{REVIEWER}/{color.BLUE}{index}{color.END}{color.BLUE} {color.BOLD}1{color.END}', f'{color.PURPLE}{data[0]}{color.END}', f'{color.UNDERLINE}{color.CYAN}Clarity categorization{color.END}']
+    x.add_row(['Q/A', f'{data[1]}', f'{data[evaluate]}'])
+    print(x)
+    print()
+    print("Please indicate the clarity of the response.")
+    print()
+    print(f'{color.RED}{color.BOLD}1{color.END}{color.RED}: Incoherent {color.END}')
+    print(f'{color.ORANGE}{color.BOLD}2{color.END}{color.ORANGE}: Coherent and illogical {color.END}')
+    print(f'{color.YELLOW}{color.BOLD}3{color.END}{color.YELLOW}: Logical {color.END}')
+    print(f'{color.GREEN}{color.BOLD}4{color.END}{color.GREEN}: Logical and clearly voiced {color.END}')
+    botClarity = getch.getch()
+    os.system('clear')
+
+
+    x = PrettyTable()
+    x.field_names = [f'{color.BLUE}{REVIEWER}/{color.BLUE}{index}{color.END}{color.BLUE} {color.BOLD}1{color.END}', f'{color.PURPLE}{data[0]}{color.END}', f'{color.UNDERLINE}{color.CYAN}Specificty categorization{color.END}']
+    x.add_row(['Q/A', f'{data[1]}', f'{data[evaluate]}'])
+    print(x)
+    print()
+    print("Please indicate the specificity of the response.")
+    print()
+    print(f'{color.RED}{color.BOLD}1{color.END}{color.RED}: Irrelevant {color.END}')
+    print(f'{color.ORANGE}{color.BOLD}2{color.END}{color.ORANGE}: Addressses question {color.END}')
+    print(f'{color.YELLOW}{color.BOLD}3{color.END}{color.YELLOW}: Engages question {color.END}')
+    print(f'{color.GREEN}{color.BOLD}4{color.END}{color.GREEN}: Opionates upon question {color.END}')
+    botSpecificity = getch.getch()
+    os.system('clear')
+
+
+    x = PrettyTable()
+    x.field_names = [f'{color.BLUE}{REVIEWER}/{color.BLUE}{index}{color.END}{color.BLUE} {color.BOLD}1{color.END}', f'{color.PURPLE}{data[0]}{color.END}', f'{color.UNDERLINE}{color.CYAN}Psycological helpfulness categorization{color.END}']
+    x.add_row(['Q/A', f'{data[1]}', f'{data[evaluate]}'])
+    print(x)
+    print()
+    print("Please indicate the psycological helpfulness of the response.")
+    print()
+    print(f'{color.RED}{color.BOLD}1{color.END}{color.RED}: Negatively influences the issue {color.END}')
+    print(f'{color.ORANGE}{color.BOLD}2{color.END}{color.ORANGE}: Non-psych/does not address the issue {color.END}')
+    print(f'{color.YELLOW}{color.BOLD}3{color.END}{color.YELLOW}: Addresses the psycological issue {color.END}')
+    print(f'{color.GREEN}{color.BOLD}4{color.END}{color.GREEN}: Positively influences the issue {color.END}')
+    botPsych = getch.getch()
+    os.system('clear')
+
+
+    return {'clarity': int(botClarity), 'specificity': int(botSpecificity), 'psychology': int(botPsych)}
+
+def turing(data, index, evaluate=2):
+    x = PrettyTable()
+    x.field_names = [f'{color.BLUE}{REVIEWER}/{color.BLUE}{index}{color.END}{color.BLUE} {color.BOLD}1{color.END}', f'{color.PURPLE}{data[0]}{color.END}', f'{color.UNDERLINE}{color.CYAN}Turing test{color.END}']
+    x.add_row(['Q/A', f'{data[1]}', f'{data[evaluate]}'])
+    print(x)
+    print()
+    print("Please indicate the psycological helpfulness of the response.")
+    print()
+    print(f'{color.RED}{color.BOLD}1{color.END}{color.RED}: Bot {color.END}')
+    print(f'{color.YELLOW}{color.BOLD}2{color.END}{color.YELLOW}: Unsure {color.END}')
+    print(f'{color.GREEN}{color.BOLD}3{color.END}{color.GREEN}: Human {color.END}')
+    result = getch.getch()
+    os.system('clear')
+    return result
+
+
 def review(db, index):
+    cursor.hide()
     data = db[index]
     os.system('clear')
+
+
     x = PrettyTable()
-    x.field_names = [f'{color.GREEN}{REVIEWER}/{color.GREEN}{index}{color.END}{color.GREEN} {color.BOLD}0{color.END}', f'{color.PURPLE}{data[0]}{color.END}', f'{color.UNDERLINE}{color.CYAN}Question type categorization.{color.END}']
+    x.field_names = [f'{color.BLUE}{REVIEWER}/{color.BLUE}{index}{color.END}{color.BLUE} {color.BOLD}0{color.END}', f'{color.PURPLE}{data[0]}{color.END}', f'{color.UNDERLINE}{color.CYAN}Question type categorization{color.END}']
+    x.add_row(['', f'Question: ', f'{data[1]}'])
     print(x)
+    print()
+    print("Please indicate if this question pretains to psycology")
+    print()
+    print(f'{color.RED}{color.BOLD}1{color.END}{color.RED}: Non Psycology{color.END} | {color.GREEN}{color.BOLD}2{color.END}{color.GREEN}: Psycology{color.END}')
+    isPsycology = getch.getch()
+    os.system('clear')
+    
+    if random.uniform(0,1) < 0.5:
+        botRubric = rubric(data, index, 3)
+        humanRubric = rubric(data, index, 2)
+    else:
+        humanRubric = rubric(data, index, 2)
+        botRubric = rubric(data, index, 3)
+
+    cursor.show()
+    return {"isPsych": isPsycology=='2', "botRubric": botRubric, "humanRubric": humanRubric}
 
 # print(color.CYAN + data[0][0] + color.END, "is cool.")
 # print(getch.getch())
-review(data, 0)
-breakpoint()
+print(review(data, 0))
 
 ## Question score just for me
 # Non psycology | psycology
