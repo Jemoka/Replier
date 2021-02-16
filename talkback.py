@@ -5,6 +5,8 @@ import cursor
 import random
 from prettytable import PrettyTable
 
+REVIEWER = "Houjun Liu"
+
 class color:
    PURPLE = '\033[95m'
    CYAN = '\033[96m'
@@ -29,9 +31,6 @@ with open("./human_talkback_data.csv", "r") as df:
     reader = csv.reader(df)
     for indx, row in enumerate(reader):
         data[indx].append(row[1])
-
-
-REVIEWER = "Houjun Liu"
 
 def rubric(data, index, evaluate=2):
     x = PrettyTable()
@@ -79,7 +78,7 @@ def rubric(data, index, evaluate=2):
     os.system('clear')
 
 
-    return {'clarity': int(botClarity), 'specificity': int(botSpecificity), 'psychology': int(botPsych)}
+    return {'clarity': int(botClarity), 'specificity': int(botSpecificity), 'psycology': int(botPsych)}
 
 def turing(data, index, evaluate=2):
     x = PrettyTable()
@@ -98,7 +97,6 @@ def turing(data, index, evaluate=2):
 
 
 def review(db, index):
-    cursor.hide()
     data = db[index]
     os.system('clear')
 
@@ -122,19 +120,35 @@ def review(db, index):
         botRubric = rubric(data, index, 2)
 
     if random.uniform(0,1) < 0.5:
-        botTuring = rubric(data, index, 2)
-        humanTuring = rubric(data, index, 3)
+        botTuring = turing(data, index, 2)
+        humanTuring = turing(data, index, 3)
     else:
-        humanTuring = rubric(data, index, 3)
-        botTuring = rubric(data, index, 2)
+        humanTuring = turing(data, index, 3)
+        botTuring = turing(data, index, 2)
 
-    cursor.show()
+    os.system('clear')
     return {"isPsych": isPsycology=='2', "botRubric": botRubric, "humanRubric": humanRubric, "botTuring": botTuring, "humanTuring": humanTuring}
 
 # print(color.CYAN + data[0][0] + color.END, "is cool.")
 # print(getch.getch())
-print(review(data, 0))
 
+total = len(data)
+def do(index, writer):
+    cursor.hide()
+    result = review(data, index)
+    print(f"Done with {index}/{total}. That's {((index/total)*100):.2f}%")
+    print(f"{color.BOLD}Do over? ({color.RED}Y(0){color.END}/{color.BOLD}{color.GREEN}N(1){color.END}{color.BOLD}){color.END}")
+    do = getch.getch()
+    while do == 'Y' or do == '0':
+        result = review(data, index)
+        do = getch.getch()
+    writer.writerow([index, REVIEWER, result["isPsych"], result["botRubric"]["clarity"], result["botRubric"]["specificity"], result["botRubric"]["psycology"], result["humanRubric"]["clarity"], result["humanRubric"]["specificity"], result["humanRubric"]["psycology"], result["botTuring"], result["humanTuring"]])
+    cursor.show()
+
+
+df = open("./test", "a")
+do(12, csv.writer(df))
+df.close()
 ## Question score just for me
 # Non psycology | psycology
 
