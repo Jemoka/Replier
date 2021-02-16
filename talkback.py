@@ -6,6 +6,7 @@ import random
 from prettytable import PrettyTable
 
 REVIEWER = "Houjun Liu"
+RESULT = "./final_result.csv"
 
 class color:
    PURPLE = '\033[95m'
@@ -82,7 +83,7 @@ def rubric(data, index, evaluate=2):
 
 def turing(data, index, evaluate=2):
     x = PrettyTable()
-    x.field_names = [f'{color.BLUE}{REVIEWER}/{color.BLUE}{index}{color.END}{color.BLUE} {color.BOLD}1{color.END}', f'{color.PURPLE}{data[0]}{color.END}', f'{color.UNDERLINE}{color.CYAN}Turing test{color.END}']
+    x.field_names = [f'{color.BLUE}{REVIEWER}/{color.BLUE}{index}{color.END}{color.BLUE} {color.BOLD}2{color.END}', f'{color.PURPLE}{data[0]}{color.END}', f'{color.UNDERLINE}{color.CYAN}Turing test{color.END}']
     x.add_row(['Q/A', f'{data[1]}', f'{data[evaluate]}'])
     print(x)
     print()
@@ -127,7 +128,7 @@ def review(db, index):
         botTuring = turing(data, index, 2)
 
     os.system('clear')
-    return {"isPsych": isPsycology=='2', "botRubric": botRubric, "humanRubric": humanRubric, "botTuring": botTuring, "humanTuring": humanTuring}
+    return {"isPsych": isPsycology=='2', "botRubric": botRubric, "humanRubric": humanRubric, "botTuring": botTuring, "humanTuring": humanTuring, 'model': data[0]}
 
 # print(color.CYAN + data[0][0] + color.END, "is cool.")
 # print(getch.getch())
@@ -137,18 +138,45 @@ def do(index, writer):
     cursor.hide()
     result = review(data, index)
     print(f"Done with {index}/{total}. That's {((index/total)*100):.2f}%")
-    print(f"{color.BOLD}Do over? ({color.RED}Y(0){color.END}/{color.BOLD}{color.GREEN}N(1){color.END}{color.BOLD}){color.END}")
+    print(f"{color.BOLD}Do over? ({color.RED}Y(0){color.END}/{color.BOLD}{color.GREEN}N(1){color.END}{color.BOLD}){color.END} or quit (Q)")
     do = getch.getch()
+    if do == 'Q':
+        return [index, True]
     while do == 'Y' or do == '0':
         result = review(data, index)
         do = getch.getch()
-    writer.writerow([index, REVIEWER, result["isPsych"], result["botRubric"]["clarity"], result["botRubric"]["specificity"], result["botRubric"]["psycology"], result["humanRubric"]["clarity"], result["humanRubric"]["specificity"], result["humanRubric"]["psycology"], result["botTuring"], result["humanTuring"]])
+    writer.writerow([index, REVIEWER, result["model"], result["isPsych"], result["botRubric"]["clarity"], result["botRubric"]["specificity"], result["botRubric"]["psycology"], result["humanRubric"]["clarity"], result["humanRubric"]["specificity"], result["humanRubric"]["psycology"], result["botTuring"], result["humanTuring"]])
     cursor.show()
+    return [index, False]
 
 
-df = open("./test", "a")
-do(12, csv.writer(df))
-df.close()
+def execute():
+    startIndex = int(input(f'''Are you ready to grade some sentences, {REVIEWER}?
+No? Too bad.
+
+Where do you want to start from? -1 for start. ''').strip())
+
+    df = open(RESULT, "a")
+    writer = csv.writer(df)
+    index = startIndex
+    isEnded = False
+    while isEnded == False:
+        index+=1
+        index, isEnded = do(index, writer)
+
+    if isEnded:
+        print(f'Ended. Next time start from {index}')
+    else:
+        print("Ok. That's it. Thank you.")
+
+    df.close()
+
+execute()
+
+# df = open("./test", "a")
+# do(12, csv.writer(df))
+# df.close()
+
 ## Question score just for me
 # Non psycology | psycology
 
